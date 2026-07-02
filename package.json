@@ -1,0 +1,20 @@
+{
+  "name": "ai-gateway-demo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "create-gateway": "tsx scripts/create-gateway.ts",
+    "setup-limits": "tsx scripts/setup-limits.ts"
+  },
+  "dependencies": {
+    "hono": "^4.4.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240620.0",
+    "tsx": "^4.15.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^3.60.0"
+  }
+}

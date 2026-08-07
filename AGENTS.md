@@ -85,7 +85,13 @@ Update `GATEWAY_NAME` in `wrangler.toml` and `src/index.ts` subtitle text.
 POST to `/api/limits` with `{ enabled: false }` or run the setup script with different args.
 
 ### Local dev
-Create `.dev.vars` with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, then `npm run dev`.
+Set secrets via `wrangler secret put` (same as production), then run:
+
+```bash
+npm run dev
+```
+
+If you need local-only overrides without touching Cloudflare secrets, create `.dev.vars` in the project root — `wrangler dev` reads it automatically.
 
 ## Tech Stack
 

@@ -1,14 +1,15 @@
 name = "ai-gateway-demo-worker"
 main = "src/index.ts"
 compatibility_date = "2024-06-20"
+account_id = "1ddebf6f9507d3fc9052158be9d42dee"
 
 [vars]
-GATEWAY_NAME = "Demo-Cost-Gateway"
+GATEWAY_NAME = "ai-cost-demo"
 
 # KV namespace for storing custom costs and demo settings
 [[kv_namespaces]]
 binding = "SETTINGS"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "4cb9e25c09ea4a9fba4bb6fd27e1333d"
 
 # Secrets required (set via wrangler secret put):
 # - CLOUDFLARE_API_TOKEN: Token with AI Gateway Edit + Read + Workers AI Read

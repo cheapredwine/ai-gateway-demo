@@ -117,7 +117,7 @@ app.get("/", (c) => {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>Demo-Cost-Gateway</strong> | Provider: <strong>Cloudflare Workers AI</strong></p>
+    <p class="subtitle">Gateway: <strong>ai-cost-demo</strong> | Provider: <strong>Cloudflare Workers AI</strong></p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->
@@ -127,12 +127,11 @@ app.get("/", (c) => {
         <label>Workers AI Model</label>
         <select id="model" onchange="onModelChange()">
           <optgroup label="Meta Llama">
-            <option value="@cf/meta/llama-3.1-8b-instruct">Llama 3.1 8B Instruct</option>
             <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B Instruct (Fast)</option>
             <option value="@cf/meta/llama-2-7b-chat-int8">Llama 2 7B Chat</option>
           </optgroup>
           <optgroup label="Mistral">
-            <option value="@cf/mistral/mistral-7b-instruct-v0.1">Mistral 7B Instruct</option>
+            <option value="@cf/mistral/mistral-7b-instruct-v0.1" selected>Mistral 7B Instruct</option>
             <option value="@cf/mistral/mistral-7b-instruct-v0.2-lora">Mistral 7B Instruct v0.2</option>
           </optgroup>
           <optgroup label="DeepSeek">
@@ -421,7 +420,7 @@ app.post("/api/chat", async (c) => {
   const upstreamHeaders: Record<string, string> = {
     "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
     "Content-Type": "application/json",
-    "cf-aig-gateway-id": gatewayId,
+    "cf-aig-gateway-id": env.GATEWAY_NAME,
   };
   const upstreamBody = {
     model,

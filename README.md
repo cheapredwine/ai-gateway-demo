@@ -1,4 +1,4 @@
-# AI Gateway PowerShell Demo
+# AI Gateway Demo
 
 A complete Cloudflare AI Gateway demo with a web client that generates traffic through the gateway using **Cloudflare Workers AI**. Supports **Custom Costs** (per-request token pricing overrides) and **Spend Limits** (gateway-level budget enforcement).
 

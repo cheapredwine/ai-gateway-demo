@@ -1,4 +1,4 @@
-# Agent Context: AI Gateway PowerShell Demo
+# Agent Context: AI Gateway Demo
 
 ## Project Overview
 

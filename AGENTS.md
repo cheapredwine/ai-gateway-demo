@@ -1,4 +1,4 @@
-# Agent Context: AI Gateway Demo
+# Agent Context: AI Gateway PowerShell Demo
 
 ## Project Overview
 
@@ -20,7 +20,7 @@ Browser → Worker (Hono) → AI Gateway (Demo-Cost-Gateway) → Workers AI
 | File | Purpose |
 |---|---|
 | `src/index.ts` | Hono Worker. Serves HTML UI, handles API routes, proxies to Workers AI via `api.cloudflare.com/client/v4/accounts/{id}/ai/v1/chat/completions` with `cf-aig-gateway-id` header. |
-| `wrangler.toml` | Worker config. KV binding `SETTINGS`. Var `GATEWAY_NAME = "Demo-Cost-Gateway"`. |
+| `wrangler.toml` | Worker config. KV binding `SETTINGS`. Var `GATEWAY_NAME = "demo-gateway"`. |
 | `scripts/create-gateway.ts` | CLI script to create the AI Gateway via Cloudflare API if missing. |
 | `scripts/setup-limits.ts` | CLI script to create a spend limit rule on the gateway. |
 
@@ -115,3 +115,8 @@ npm run deploy
 - Cost tracking is best-effort estimation based on token counts
 - Max 20 spend limit rules per gateway
 - Gateway stats endpoint may vary; adjust `/api/stats` if Cloudflare API changes
+
+## Public Template Notes
+
+- `wrangler.toml` uses placeholder values. Set `account_id` and KV `id` before deploying.
+- Default gateway name is `demo-gateway` (change via `GATEWAY_NAME` var).

@@ -117,7 +117,7 @@ app.get("/", (c) => {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>ai-cost-demo</strong> | Provider: <strong>Cloudflare Workers AI</strong></p>
+    <p class="subtitle">Gateway: <strong>${c.env.GATEWAY_NAME}</strong> | Provider: <strong>Cloudflare Workers AI</strong></p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->

@@ -1,4 +1,4 @@
-# AI Gateway Cost Control Demo
+# AI Gateway PowerShell Demo
 
 A complete Cloudflare AI Gateway demo with a web client that generates traffic through the gateway using **Cloudflare Workers AI**. Supports **Custom Costs** (per-request token pricing overrides) and **Spend Limits** (gateway-level budget enforcement).
 
@@ -8,8 +8,8 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 
 ```
 ┌─────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│  Web Client │─────▶│  ai-gateway-demo     │─────▶│  AI Gateway     │
-│  (Browser)  │      │  (Cloudflare Worker) │      │  Demo-Cost-Gateway
+│  Web Client │─────▶│  ai-gateway-demo  │─────▶│  AI Gateway     │
+│  (Browser)  │      │  (Cloudflare Worker)   │      │  demo-gateway
 └─────────────┘      └──────────────────────┘      └─────────────────┘
                             │                              │
                             ▼                              ▼
@@ -21,7 +21,7 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 
 - **Worker** serves the web UI and proxies chat requests to AI Gateway via the Cloudflare REST API.
 - **KV** persists custom cost settings between requests.
-- **AI Gateway** `Demo-Cost-Gateway` observes traffic, applies custom costs, and enforces spend limits on Workers AI inference.
+- **AI Gateway** `demo-gateway` observes traffic, applies custom costs, and enforces spend limits on Workers AI inference.
 
 ---
 
@@ -162,7 +162,7 @@ ai-gateway-demo/
 ├── src/
 │   └── index.ts          # Hono Worker (UI + API)
 ├── scripts/
-│   ├── create-gateway.ts # CLI: create Demo-Cost-Gateway
+│   ├── create-gateway.ts # CLI: create demo-gateway
 │   └── setup-limits.ts   # CLI: create spend limit rule
 ├── wrangler.toml         # Worker config (KV binding, vars)
 ├── tsconfig.json

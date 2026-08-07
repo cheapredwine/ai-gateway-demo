@@ -1,0 +1,19 @@
+src/index.ts
+  s_8665f446b26854::t_875d73a94a864c 120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3e29016fea5cca5d0a317f09045c154d91cb6c0d",
+  "prompts": {},
+  "sessions": {
+    "s_8665f446b26854": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_021e6fe93ffexdNmB1MrYNIPS5",
+        "model": "@cf/moonshotai/kimi-k2.6"
+      },
+      "human_author": "Jason Sherron <jsherron@cloudflare.com>"
+    }
+  }
+}

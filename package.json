@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "test": "vitest run",
     "create-gateway": "tsx scripts/create-gateway.ts",
     "setup-limits": "tsx scripts/setup-limits.ts"
   },
@@ -12,9 +13,12 @@
     "hono": "^4.4.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240620.0",
+    "@cloudflare/vitest-pool-workers": "^0.21.0",
+    "@cloudflare/workers-types": "^5.20260810.1",
+    "@types/node": "^26.2.0",
     "tsx": "^4.15.0",
     "typescript": "^5.4.0",
-    "wrangler": "^3.60.0"
+    "vitest": "^4.1.10",
+    "wrangler": "^4.120.1"
   }
 }

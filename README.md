@@ -1,6 +1,6 @@
 # AI Gateway Demo
 
-A complete Cloudflare AI Gateway demo with a web client that generates traffic through the gateway using **Cloudflare Workers AI**. Supports **Custom Costs** (per-request token pricing overrides) and **Spend Limits** (gateway-level budget enforcement).
+A complete Cloudflare AI Gateway demo with a web client that generates traffic through the gateway using **Cloudflare Workers AI**. Supports **Custom Costs**, **Spend Limits**, **Rate Limiting**, **Caching**, **Custom Metadata**, and **Identity-Aware Gateway**.
 
 ---
 
@@ -8,8 +8,8 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 
 ```
 ┌─────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│  Web Client │─────▶│  ai-gateway-demo  │─────▶│  AI Gateway     │
-│  (Browser)  │      │  (Cloudflare Worker)   │      │  demo-gateway
+│  Web Client │─────▶│  ai-gateway-demo     │─────▶│  AI Gateway     │
+│  (Browser)  │      │  (Cloudflare Worker) │      │  (Custom Domain)│
 └─────────────┘      └──────────────────────┘      └─────────────────┘
                             │                              │
                             ▼                              ▼
@@ -19,9 +19,14 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
                       └──────────┘
 ```
 
-- **Worker** serves the web UI and proxies chat requests to AI Gateway via the Cloudflare REST API.
-- **KV** persists custom cost settings between requests.
-- **AI Gateway** `demo-gateway` observes traffic, applies custom costs, and enforces spend limits on Workers AI inference.
+- **Worker** serves the web UI and proxies chat requests to AI Gateway via the **custom domain** (OpenAI-compatible endpoint).
+- **Management calls** (stats, rate limits, spend limits) use the gateway ID via the Cloudflare REST API.
+- **KV** persists custom cost settings and gateway config between requests.
+- **AI Gateway** observes traffic, applies custom costs, caching, rate limits, and spend limits on Workers AI inference.
+
+> **Two gateway references:**
+> - `GATEWAY_NAME` = custom domain for chat traffic (e.g. `ai-gw.jsherron.com`)
+> - `GATEWAY_ID` = actual gateway ID for management API calls (e.g. `ai-cost-demo`)
 
 ---
 
@@ -45,12 +50,15 @@ npm install
 # Create KV namespace and paste ID into wrangler.toml
 npx wrangler kv namespace create SETTINGS
 
+# Configure wrangler.toml:
+# - Set account_id
+# - Set GATEWAY_NAME to your custom domain (e.g. "ai-gw.jsherron.com")
+# - Set GATEWAY_ID to your actual gateway ID (e.g. "ai-cost-demo")
+# - Paste KV namespace id
+
 # Set secrets
 npx wrangler secret put CLOUDFLARE_API_TOKEN
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
-
-# Create the AI Gateway
-CLOUDFLARE_API_TOKEN=<token> CLOUDFLARE_ACCOUNT_ID=<id> npx tsx scripts/create-gateway.ts
 
 # Deploy
 npm run deploy
@@ -64,14 +72,17 @@ Visit the deployed Worker URL to open the web client.
 
 | Panel | Purpose |
 |---|---|
-| **Traffic Generator** | Send single or burst chat requests to Workers AI through the gateway. Choose from 15+ models or enter a custom `@cf/` model name. |
+| **Traffic Generator** | Send single or burst chat requests to Workers AI through the gateway. Choose from 20+ models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
 | **Custom Costs** | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request. |
-| **Spend Limits** | Create gateway-level spend limit rules (budget + time window + scope) via the Cloudflare API. |
-| **Gateway Stats** | Pull live request / token / cost stats from the gateway. |
+| **Gateway Settings** | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API. |
+| **Gateway Stats** | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status). |
+| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights. |
 
 ---
 
-## How Custom Costs Work
+## Feature Deep Dives
+
+### Custom Costs
 
 The demo stores your custom cost values in KV. On every chat request the Worker reads them and forwards the header:
 
@@ -81,23 +92,55 @@ cf-aig-custom-cost: {"per_token_in":0.000001,"per_token_out":0.000002}
 
 AI Gateway uses these values instead of the public model pricing when calculating cost metrics and spend limit consumption.
 
-Change values in the web UI at any time; the next request uses the new pricing.
+### Caching
 
----
+Enable caching on a per-request basis via the Traffic Generator. The Worker sends:
 
-## How Spend Limits Work
-
-Spend limits are configured **on the gateway itself** via the Cloudflare API. When you click *Apply to Gateway* in the web UI, the Worker creates a rule such as:
-
-- Budget: `$1.00`
-- Window: `1 day`
-- Scope: `global` (or per-model / per-provider)
-
-Once cumulative estimated spend hits the budget, AI Gateway returns **HTTP 429** and the demo client shows:
-
+```http
+cf-aig-cache-ttl: 300
+cf-aig-cache-key: my-cache-key    (optional)
 ```
-BLOCKED: Spend limit exceeded (429)
+
+Or bypass cache with:
+```http
+cf-aig-skip-cache: true
 ```
+
+The response includes `cf-aig-cache-status: HIT` or `MISS`. Identical requests within the TTL window are served from Cloudflare's cache.
+
+### Rate Limiting
+
+Configure request-based rate limits on the gateway:
+- **Limit**: Max requests per window (e.g. 100)
+- **Interval**: Window in seconds (e.g. 60)
+- **Technique**: Fixed or sliding window
+
+When exceeded, AI Gateway returns **HTTP 429**.
+
+### Custom Metadata
+
+Tag requests with key-value pairs via `cf-aig-metadata`. Metadata appears in AI Gateway logs for filtering and analytics. Supports strings, numbers, and booleans (max 5 pairs).
+
+> **Reserved keys:** `cf.*` keys are reserved by Cloudflare. When Identity-Aware Gateway is configured, `cf.user_id` is automatically injected.
+
+### Spend Limits
+
+Gateway-level budget enforcement. When cumulative estimated spend hits the budget, AI Gateway returns **HTTP 429**.
+
+### Identity-Aware Gateway (Beta)
+
+Put a custom domain in front of AI Gateway and protect it with **Cloudflare Access**:
+1. Add a [custom domain](https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/) to your gateway
+2. Create an [Access application](https://developers.cloudflare.com/cloudflare-one/policies/access/) for that domain
+3. Authenticate via your SAML IDP (Okta, Entra, etc.)
+4. AI Gateway auto-injects `cf.user_id` metadata on every request
+
+This enables:
+- **Per-user spend limits** — each user gets their own budget bucket
+- **Per-user rate limits** — cap requests per authenticated identity
+- **User Insights** — behavioral baselines and anomaly detection per user
+
+No code changes required. The demo UI includes a reference card with setup steps.
 
 ---
 
@@ -109,8 +152,7 @@ BLOCKED: Spend limit exceeded (429)
 | `POST` | `/api/chat` | Proxy chat request to Workers AI via AI Gateway |
 | `GET` | `/api/costs` | Read current custom costs from KV |
 | `POST` | `/api/costs` | Save custom costs to KV |
-| `GET` | `/api/limits` | Read spend limit config from KV |
-| `POST` | `/api/limits` | Create spend limit rule on gateway |
+| `POST` | `/api/settings` | Update gateway rate limits + spend limits |
 | `GET` | `/api/stats` | Fetch gateway stats from Cloudflare API |
 | `GET` | `/api/bootstrap` | Ensure gateway exists |
 
@@ -120,7 +162,7 @@ BLOCKED: Spend limit exceeded (429)
 
 | Permission | Scope | Why |
 |---|---|---|
-| `AI Gateway — Edit` | Account | Create gateway, create/delete spend limit rules. |
+| `AI Gateway — Edit` | Account | Create gateway, create/delete spend limit rules, update rate limiting config. |
 | `AI Gateway — Read` | Account | Read gateway stats and existing rules. |
 | `Workers AI — Read` | Account | Required for Unified Billing / Workers AI inference. |
 
@@ -149,7 +191,7 @@ Worker starts on `http://localhost:8787`.
 |---|---|
 | `KV namespace not found` | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`. |
 | `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**. |
-| `429 Too Many Requests` from chat | Expected when a spend limit is exceeded. Wait for the window to reset, or raise the budget. |
+| `429 Too Many Requests` from chat | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget. |
 | `Model not found` | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct`). |
 | `Workers AI unauthorized` | Add **Workers AI — Read** permission to your API token. |
 

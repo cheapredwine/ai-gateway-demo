@@ -28,7 +28,8 @@ Browser → Worker (Hono) → AI Gateway (custom domain) → Workers AI
 | File | Purpose |
 |---|---|
 | `src/index.ts` | Hono Worker. Serves HTML UI, handles API routes. Chat calls custom domain `/compat/chat/completions`. Management calls use gateway ID via Cloudflare REST API. |
-| `wrangler.toml` | Worker config. KV binding `SETTINGS`. Vars: `GATEWAY_NAME` (custom domain), `GATEWAY_ID` (actual gateway ID). |
+| `wrangler.toml` | Your local Worker config (gitignored). Copy from `wrangler.toml.example`. |
+| `wrangler.toml.example` | Template with placeholder values for new users. |
 | `scripts/create-gateway.ts` | CLI script to create the AI Gateway via Cloudflare API if missing. |
 | `scripts/setup-limits.ts` | CLI script to create a spend limit rule on the gateway. |
 
@@ -40,6 +41,12 @@ Set via `wrangler secret put`:
 
 KV namespace:
 - `SETTINGS` — stores `custom_costs` and `gateway_settings` JSON
+
+### Setup
+
+1. Copy the template: `cp wrangler.toml.example wrangler.toml`
+2. Edit `wrangler.toml` with your `account_id`, `GATEWAY_NAME`, `GATEWAY_ID`, and KV `id`
+3. `wrangler.toml` is gitignored so your personal config never gets committed
 
 ## API Token Permissions
 
@@ -181,5 +188,6 @@ npm run deploy
 
 ## Public Template Notes
 
-- `wrangler.toml` uses placeholder values. Set `account_id` and KV `id` before deploying.
-- Default gateway name is `demo-gateway` (change via `GATEWAY_NAME` var).
+- Copy `wrangler.toml.example` → `wrangler.toml` and fill in your values
+- `wrangler.toml` is gitignored so your personal config never gets committed
+- Default gateway name is `demo-gateway` (change via `GATEWAY_ID` var)

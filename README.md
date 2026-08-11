@@ -7,19 +7,36 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 ## Architecture
 
 ```
-┌─────────────┐      ┌──────────────────────┐      ┌─────────────────┐
-│  Web Client │─────▶│  ai-gateway-demo     │─────▶│  AI Gateway     │
-│  (Browser)  │      │  (Cloudflare Worker) │      │  (Custom Domain)│
-└─────────────┘      └──────────────────────┘      └─────────────────┘
-                            │                              │
-                            ▼                              ▼
-                      ┌──────────┐                  ┌──────────────┐
-                      │  KV      │                  │  Workers AI  │
-                      │ SETTINGS │                  └──────────────┘
-                      └──────────┘
+Two demo modes, one Worker:
+
+1. Human identity (browser → gateway directly):
+   ┌──────────┐     ┌──────────────────────┐     ┌─────────────────┐
+   │  Browser  │────▶│  ai-gw.jsherron.com   │────▶│  AI Gateway     │
+   │ (Access)  │     │  /demo (Worker UI)    │     │  /compat/...    │
+   └──────────┘     └──────────────────────┘     └─────────────────┘
+         │                  │                              │
+         │                  ▼                              ▼
+         │           ┌──────────┐                   ┌──────────────┐
+         │           │  KV      │                   │  Workers AI  │
+         │           │ SETTINGS │                   └──────────────┘
+         │           └──────────┘
+         │
+         └──▶ Access injects cf.user_id (human identity, shows in dashboard)
+
+2. Service identity (Worker proxies):
+   ┌──────────┐     ┌──────────────────────┐     ┌─────────────────┐
+   │  Client   │────▶│  Worker /api/chat    │────▶│  AI Gateway     │
+   │           │     │  (service token)     │     │  (custom domain)│
+   └──────────┘     └──────────────────────┘     └─────────────────┘
+                                                         │
+                                                         ▼
+                                                  cf.common_name in logs
+                                                  (NOT in dashboard)
 ```
 
-- **Worker** serves the web UI and proxies chat requests to AI Gateway via the **custom domain** (OpenAI-compatible endpoint).
+- **Worker** serves the web UI at `/demo` and proxies chat requests to AI Gateway via the **custom domain** (OpenAI-compatible endpoint).
+- **Gateway mode** (browser): chat calls go directly to `/compat/chat/completions` — same origin, Access injects `cf.user_id`, no API token in browser.
+- **Worker proxy mode** (service): Worker uses service token headers (`CF-Access-Client-Id`/`CF-Access-Client-Secret`), logs show `cf.common_name`.
 - **Management calls** (stats, rate limits, spend limits) use the gateway ID via the Cloudflare REST API.
 - **KV** persists custom cost settings and gateway config between requests.
 - **AI Gateway** observes traffic, applies custom costs, caching, rate limits, and spend limits on Workers AI inference.
@@ -27,6 +44,15 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 > **Two gateway references:**
 > - `GATEWAY_NAME` = custom domain for chat traffic (e.g. `ai-gw.jsherron.com`)
 > - `GATEWAY_ID` = actual gateway ID for management API calls (e.g. `ai-cost-demo`)
+
+### Identity in Logs
+
+| Auth method | Identity field | Dashboard visibility | User agent |
+|---|---|---|---|
+| Human (Access + IdP) | `cf.user_id` | Shows in dashboard, User Insights, per-user limits | Browser |
+| Service token | `cf.common_name` | Logs API only — does NOT appear in dashboard UI | `cloudflare-worker` |
+
+**Service tokens do not show as identities in the AI Gateway dashboard.** The `cf.common_name` field is visible in the logs API response but is not surfaced in the dashboard's User Insights or per-user analytics views. Only human identity (`cf.user_id` from IdP authentication) appears in the dashboard. This is the key value-add of Identity-Aware Gateway with human auth.
 
 ---
 
@@ -59,12 +85,14 @@ cp wrangler.toml.example wrangler.toml
 # Set secrets
 npx wrangler secret put CLOUDFLARE_API_TOKEN
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+npx wrangler secret put CF_ACCESS_CLIENT_ID
+npx wrangler secret put CF_ACCESS_CLIENT_SECRET
 
 # Deploy
 npm run deploy
 ```
 
-Visit the deployed Worker URL to open the web client.
+Visit `https://<your-gateway-domain>/demo` to open the web client (requires Access authentication for human identity).
 
 ---
 
@@ -132,15 +160,18 @@ Gateway-level budget enforcement. When cumulative estimated spend hits the budge
 Put a custom domain in front of AI Gateway and protect it with **Cloudflare Access**:
 1. Add a [custom domain](https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/) to your gateway
 2. Create an [Access application](https://developers.cloudflare.com/cloudflare-one/policies/access/) for that domain
-3. Authenticate via your SAML IDP (Okta, Entra, etc.)
-4. AI Gateway auto-injects `cf.user_id` metadata on every request
+3. Create a service token and add a Service Auth policy at #1
+4. Set `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` as Worker secrets
+5. Authenticate via your SAML IDP (Okta, Entra, etc.) for human identity
+6. AI Gateway auto-injects `cf.user_id` metadata on human requests
+7. Service token requests get `cf.common_name` instead (visible in logs API, not dashboard)
 
 This enables:
 - **Per-user spend limits** — each user gets their own budget bucket
 - **Per-user rate limits** — cap requests per authenticated identity
 - **User Insights** — behavioral baselines and anomaly detection per user
 
-No code changes required. The demo UI includes a reference card with setup steps.
+> **Note:** Service token identity (`cf.common_name`) appears in the logs API but does NOT appear in the AI Gateway dashboard. Only human identity (`cf.user_id` from IdP authentication) is surfaced in the dashboard's User Insights and per-user analytics views.
 
 ---
 
@@ -148,13 +179,17 @@ No code changes required. The demo UI includes a reference card with setup steps
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/` | Web UI |
-| `POST` | `/api/chat` | Proxy chat request to Workers AI via AI Gateway |
+| `GET` | `/` | Web UI (Worker proxy mode) |
+| `GET` | `/demo` | Web UI (gateway mode, behind Access) |
+| `POST` | `/api/chat` | Proxy chat request to Workers AI via AI Gateway (service token) |
+| `POST` | `/demo/api/chat` | Same, under `/demo` prefix |
 | `GET` | `/api/costs` | Read current custom costs from KV |
+| `GET` | `/demo/api/costs` | Same, under `/demo` prefix |
 | `POST` | `/api/costs` | Save custom costs to KV |
 | `POST` | `/api/settings` | Update gateway rate limits + spend limits |
 | `GET` | `/api/stats` | Fetch gateway stats from Cloudflare API |
 | `GET` | `/api/bootstrap` | Ensure gateway exists |
+| `GET` | `/api/debug-access` | Debug Access service token auth |
 
 ---
 
@@ -176,6 +211,8 @@ Create token at: https://dash.cloudflare.com/?to=/:account/api-tokens
 cat > .dev.vars <<EOF
 CLOUDFLARE_API_TOKEN=your_token
 CLOUDFLARE_ACCOUNT_ID=your_account_id
+CF_ACCESS_CLIENT_ID=your_access_service_token_id
+CF_ACCESS_CLIENT_SECRET=your_access_service_token_secret
 EOF
 
 npm run dev

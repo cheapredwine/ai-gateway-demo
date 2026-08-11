@@ -124,7 +124,7 @@ function serveHtml(c: any) {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>${c.env.GATEWAY_NAME}</strong> | Provider: <strong>Cloudflare Workers AI</strong></p>
+    <p class="subtitle">Gateway: <strong>${c.env.GATEWAY_NAME}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span></p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->
@@ -397,6 +397,10 @@ function serveHtml(c: any) {
   <script>
     const onGateway = window.location.pathname.startsWith("/demo");
     const API = onGateway ? "/demo" : "";
+
+    document.getElementById("identityMode").innerHTML = onGateway
+      ? '<span style="color:#4ade80;">Access Identity (cf.user_id)</span>'
+      : '<span style="color:#fbbf24;">Service Token (cf.common_name)</span>';
 
     function log(msg, type="info") {
       const el = document.getElementById("chatOutput");

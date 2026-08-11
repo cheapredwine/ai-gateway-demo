@@ -9,6 +9,8 @@
  *   npx tsx scripts/setup-limits.ts --budget 1.00 --window 1d
  */
 
+export {};
+
 const TOKEN = process.env.CLOUDFLARE_API_TOKEN;
 const ACCOUNT = process.env.CLOUDFLARE_ACCOUNT_ID;
 const GATEWAY_NAME = process.env.GATEWAY_NAME || "Demo-Cost-Gateway";
@@ -35,7 +37,7 @@ async function main() {
   const { budget, window, scope } = parseArgs();
   const base = `https://api.cloudflare.com/client/v4/accounts/${ACCOUNT}/ai-gateway/gateways/${GATEWAY_NAME}`;
 
-  const dimensions: any = {};
+  const dimensions: Record<string, unknown> = {};
   if (scope === "model") dimensions.model = { mode: "split_by_value" };
   if (scope === "provider") dimensions.provider = { mode: "split_by_value" };
 
@@ -48,7 +50,7 @@ async function main() {
     body: JSON.stringify({ budget, window, dimensions }),
   });
 
-  const data = await res.json();
+  const data = await res.json() as { result?: unknown; errors?: { message: string }[] };
   if (!res.ok) {
     console.error("Failed to create spend limit:", JSON.stringify(data, null, 2));
     process.exit(1);

@@ -6,6 +6,7 @@ type Env = {
   CLOUDFLARE_API_TOKEN: string;
   CLOUDFLARE_ACCOUNT_ID: string;
   GATEWAY_NAME: string;
+  GATEWAY_ID: string;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -127,31 +128,41 @@ app.get("/", (c) => {
         <label>Workers AI Model</label>
         <select id="model" onchange="onModelChange()">
           <optgroup label="Meta Llama">
-            <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B Instruct (Fast)</option>
-            <option value="@cf/meta/llama-2-7b-chat-int8">Llama 2 7B Chat</option>
+            <option value="@cf/meta/llama-3.1-8b-instruct-fast" selected>Llama 3.1 8B Fast</option>
+            <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B Instruct</option>
+            <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B FP8 Fast</option>
+            <option value="@cf/meta/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B</option>
           </optgroup>
           <optgroup label="Mistral">
-            <option value="@cf/mistral/mistral-7b-instruct-v0.1" selected>Mistral 7B Instruct</option>
-            <option value="@cf/mistral/mistral-7b-instruct-v0.2-lora">Mistral 7B Instruct v0.2</option>
+            <option value="@cf/mistral/mistral-7b-instruct-v0.2-lora">Mistral 7B v0.2 LoRA</option>
+            <option value="@cf/mistral/mistral-small-3.1-24b-instruct">Mistral Small 3.1 24B</option>
           </optgroup>
           <optgroup label="DeepSeek">
             <option value="@cf/deepseek-ai/deepseek-r1-distill-qwen-32b">DeepSeek R1 Distill Qwen 32B</option>
           </optgroup>
           <optgroup label="Google">
-            <option value="@cf/google/gemma-2b-it-lora">Gemma 2B IT</option>
-            <option value="@cf/google/gemma-7b-it-lora">Gemma 7B IT</option>
+            <option value="@cf/google/gemma-4-26b-a4b-it">Gemma 4 26B IT</option>
+            <option value="@cf/google/gemma-7b-it-lora">Gemma 7B IT LoRA</option>
           </optgroup>
           <optgroup label="Qwen">
-            <option value="@cf/qwen/qwen1.5-0.5b-chat">Qwen1.5 0.5B Chat</option>
-            <option value="@cf/qwen/qwen1.5-1.8b-chat">Qwen1.5 1.8B Chat</option>
-            <option value="@cf/qwen/qwen1.5-7b-chat-awq">Qwen1.5 7B Chat</option>
-            <option value="@cf/qwen/qwen1.5-14b-chat-awq">Qwen1.5 14B Chat</option>
+            <option value="@cf/qwen/qwen3-30b-a3b-fp8">Qwen3 30B FP8</option>
+            <option value="@cf/qwen/qwq-32b">QwQ 32B (Reasoning)</option>
+            <option value="@cf/qwen/qwen2.5-coder-32b-instruct">Qwen2.5 Coder 32B</option>
+          </optgroup>
+          <optgroup label="OpenAI">
+            <option value="@cf/openai/gpt-oss-20b">GPT-OSS 20B</option>
+            <option value="@cf/openai/gpt-oss-120b">GPT-OSS 120B</option>
+          </optgroup>
+          <optgroup label="Moonshot">
+            <option value="@cf/moonshotai/kimi-k2.6">Kimi K2.6</option>
+            <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code</option>
           </optgroup>
           <optgroup label="Other">
+            <option value="@cf/zhipuai/glm-4.7-flash">GLM 4.7 Flash</option>
+            <option value="@cf/ibm/granite-4.0-h-micro">IBM Granite 4.0</option>
+            <option value="@cf/nvidia/nemotron-3-120b-a12b">NVIDIA Nemotron 3 120B</option>
             <option value="@cf/microsoft/phi-2">Microsoft Phi-2</option>
-            <option value="@cf/openchat/openchat-3.5-0106">OpenChat 3.5</option>
             <option value="@cf/tinyllama/tinyllama-1.1b-chat-v1.0">TinyLlama 1.1B</option>
-            <option value="@cf/moonshotai/kimi-k2.6">Moonshot Kimi K2.6</option>
             <option value="custom">Custom model...</option>
           </optgroup>
         </select>
@@ -167,6 +178,49 @@ app.get("/", (c) => {
         <div class="toggle">
           <input type="checkbox" id="useCustomCost" checked>
           <label for="useCustomCost" style="margin:0">Apply Custom Cost header</label>
+        </div>
+
+        <hr style="border-color:#334155;margin:1rem 0">
+        <h3 style="font-size:0.9rem;color:#94a3b8;margin-bottom:0.5rem">Cache &amp; Metadata</h3>
+
+        <div class="toggle">
+          <input type="checkbox" id="useCache" onchange="onCacheToggle()">
+          <label for="useCache" style="margin:0">Enable caching (cf-aig-cache-ttl)</label>
+        </div>
+
+        <div id="cacheControls" style="display:none;margin-top:0.5rem">
+          <div class="cost-inputs">
+            <div>
+              <label>Cache TTL (seconds)</label>
+              <input type="number" id="cacheTTL" value="300" step="60" min="60" max="2592000">
+            </div>
+            <div>
+              <label>Custom Cache Key (optional)</label>
+              <input type="text" id="cacheKey" placeholder="my-cache-key">
+            </div>
+          </div>
+          <div class="toggle">
+            <input type="checkbox" id="skipCache">
+            <label for="skipCache" style="margin:0">Skip cache this time</label>
+          </div>
+        </div>
+
+        <div class="toggle" style="margin-top:0.75rem">
+          <input type="checkbox" id="useMetadata" onchange="onMetadataToggle()">
+          <label for="useMetadata" style="margin:0">Send custom metadata (cf-aig-metadata)</label>
+        </div>
+
+        <div id="metadataControls" style="display:none;margin-top:0.5rem">
+          <div class="cost-inputs">
+            <div>
+              <label>Key</label>
+              <input type="text" id="metaKey" placeholder="user_id" value="team">
+            </div>
+            <div>
+              <label>Value</label>
+              <input type="text" id="metaValue" placeholder="12345" value="demo">
+            </div>
+          </div>
         </div>
 
         <button onclick="sendChat()">Send Request</button>
@@ -204,19 +258,35 @@ app.get("/", (c) => {
         </div>
       </div>
 
-      <!-- Spend Limits -->
+      <!-- Gateway Settings -->
       <div class="card">
-        <h2><span>🛡️</span> Spend Limits</h2>
-        <p class="muted">Configure gateway-level spend limit rules via the Cloudflare API.</p>
+        <h2><span>⚙️</span> Gateway Settings</h2>
+        <p class="muted">Configure gateway-level rate limits and spend limits via Cloudflare API.</p>
 
+        <h3 style="font-size:0.9rem;color:#94a3b8;margin:0.5rem 0">Rate Limiting</h3>
+        <div class="toggle">
+          <input type="checkbox" id="rlEnabled">
+          <label for="rlEnabled" style="margin:0">Enable rate limiting</label>
+        </div>
+        <label>Requests per window</label>
+        <input type="number" id="rlLimit" value="100" step="1">
+        <label>Window (seconds)</label>
+        <input type="number" id="rlInterval" value="60" step="10">
+        <label>Technique</label>
+        <select id="rlTechnique">
+          <option value="fixed">Fixed window</option>
+          <option value="sliding">Sliding window</option>
+        </select>
+
+        <hr style="border-color:#334155;margin:1rem 0">
+
+        <h3 style="font-size:0.9rem;color:#94a3b8;margin:0.5rem 0">Spend Limits</h3>
         <div class="toggle">
           <input type="checkbox" id="limitEnabled">
           <label for="limitEnabled" style="margin:0">Enable spend limit rule</label>
         </div>
-
         <label>Budget ($)</label>
         <input type="number" id="limitBudget" value="1.00" step="0.01">
-
         <label>Time Window</label>
         <select id="limitWindow">
           <option value="1m">1 minute</option>
@@ -224,7 +294,6 @@ app.get("/", (c) => {
           <option value="1h">1 hour</option>
           <option value="1d" selected>1 day</option>
         </select>
-
         <label>Scope (dimension)</label>
         <select id="limitScope">
           <option value="global">Global (all requests)</option>
@@ -232,7 +301,7 @@ app.get("/", (c) => {
           <option value="provider">Per provider</option>
         </select>
 
-        <button onclick="saveLimits()">Apply to Gateway</button>
+        <button onclick="saveGatewaySettings()">Apply All to Gateway</button>
         <div id="limitMessage"></div>
       </div>
 
@@ -260,7 +329,61 @@ app.get("/", (c) => {
           </div>
         </div>
 
+        <h3 style="font-size:0.85rem;color:#94a3b8;margin-top:1rem;margin-bottom:0.5rem">Live Gateway Config</h3>
+        <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr">
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statCacheTTL">-</div>
+            <div class="stat-label">Cache TTL</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statRLLimit">-</div>
+            <div class="stat-label">Rate Limit</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statSpendLimit">-</div>
+            <div class="stat-label">Spend Limit</div>
+          </div>
+        </div>
+
         <div id="statsDetail" class="muted" style="margin-top:1rem;font-size:0.8rem"></div>
+      </div>
+
+      <!-- Identity & Access -->
+      <div class="card">
+        <h2><span>🔐</span> Identity-Aware Gateway <span class="muted" style="font-size:0.7rem;background:#1e3a5f;padding:2px 6px;border-radius:4px">BETA</span></h2>
+        <p class="muted">Put a custom domain in front of AI Gateway and protect it with Cloudflare Access. Every authenticated request carries the user's identity as <code>cf.user_id</code> metadata — no code changes required.</p>
+
+        <div class="stats-grid" style="grid-template-columns: 1fr 1fr; gap:0.5rem; margin-top:0.75rem">
+          <div class="stat-box" style="padding:0.75rem">
+            <div class="stat-value" style="font-size:1.1rem">Per-User</div>
+            <div class="stat-label">Spend Limits</div>
+          </div>
+          <div class="stat-box" style="padding:0.75rem">
+            <div class="stat-value" style="font-size:1.1rem">Per-User</div>
+            <div class="stat-label">Rate Limits</div>
+          </div>
+          <div class="stat-box" style="padding:0.75rem">
+            <div class="stat-value" style="font-size:1.1rem">User Insights</div>
+            <div class="stat-label">Behavioral Baselines</div>
+          </div>
+          <div class="stat-box" style="padding:0.75rem">
+            <div class="stat-value" style="font-size:1.1rem">IDP Groups</div>
+            <div class="stat-label">Okta / Entra / SAML</div>
+          </div>
+        </div>
+
+        <h3 style="font-size:0.85rem;color:#94a3b8;margin-top:1rem;margin-bottom:0.5rem">Setup Steps</h3>
+        <ol class="muted" style="font-size:0.8rem;padding-left:1.2rem;line-height:1.6">
+          <li>Add a <a href="https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/" target="_blank" style="color:#3b82f6">custom domain</a> to your AI Gateway</li>
+          <li>Create an <a href="https://developers.cloudflare.com/cloudflare-one/policies/access/" target="_blank" style="color:#3b82f6">Access application</a> for that domain</li>
+          <li>Authenticate via your SAML IDP (Okta, Entra, etc.)</li>
+          <li>AI Gateway auto-injects <code>cf.user_id</code> into every request</li>
+          <li>Filter logs, set per-user limits, and view User Insights</li>
+        </ol>
+
+        <div class="message info" style="background:rgba(59,130,246,0.1);margin-top:0.75rem">
+          <strong>Reserved metadata:</strong> Keys starting with <code>cf.</code> are reserved. When Access is configured, <code>cf.user_id</code> is automatically added to request metadata and appears in logs.
+        </div>
       </div>
     </div>
   </div>
@@ -281,12 +404,33 @@ app.get("/", (c) => {
       setTimeout(() => el.innerHTML = "", 5000);
     }
 
+    function onModelChange() {
+      const sel = document.getElementById("model").value;
+      document.getElementById("customModelInput").style.display = sel === "custom" ? "block" : "none";
+    }
+
+    function onCacheToggle() {
+      document.getElementById("cacheControls").style.display = document.getElementById("useCache").checked ? "block" : "none";
+    }
+
+    function onMetadataToggle() {
+      document.getElementById("metadataControls").style.display = document.getElementById("useMetadata").checked ? "block" : "none";
+    }
+
     async function sendChat(count=1) {
-      const model = document.getElementById("model").value;
+      const modelSel = document.getElementById("model").value;
+      const model = modelSel === "custom" ? document.getElementById("customModel").value : modelSel;
       const prompt = document.getElementById("prompt").value;
       const useCustom = document.getElementById("useCustomCost").checked;
       const costIn = parseFloat(document.getElementById("costIn").value);
       const costOut = parseFloat(document.getElementById("costOut").value);
+      const useCache = document.getElementById("useCache").checked;
+      const cacheTTL = parseInt(document.getElementById("cacheTTL").value, 10);
+      const cacheKey = document.getElementById("cacheKey").value;
+      const skipCache = document.getElementById("skipCache").checked;
+      const useMetadata = document.getElementById("useMetadata").checked;
+      const metaKey = document.getElementById("metaKey").value;
+      const metaValue = document.getElementById("metaValue").value;
 
       for (let i = 0; i < count; i++) {
         log(\`Sending #\${i+1} to \${model}...\`, "info");
@@ -299,15 +443,21 @@ app.get("/", (c) => {
           const res = await fetch(\`\${API}/api/chat\`, {
             method: "POST",
             headers,
-            body: JSON.stringify({ model, prompt })
+            body: JSON.stringify({
+              model,
+              prompt,
+              cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
+              metadata: useMetadata && metaKey ? { [metaKey]: metaValue } : undefined
+            })
           });
           const data = await res.json();
           if (res.status === 429) {
-            log(\`BLOCKED: Spend limit exceeded (429)\`, "error");
+            log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
           } else if (res.ok) {
             const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
-            const cost = data.estimatedCost !== undefined ? "\$" + data.estimatedCost.toFixed(6) : "?";
-            log(\`OK \${tokens} tokens | est cost \${cost} | \${data.model || model}\`, "success");
+            const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
+            const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
+            log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
           } else {
             log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
           }
@@ -340,19 +490,26 @@ app.get("/", (c) => {
       document.getElementById("costOut").value = outCost;
     }
 
-    async function saveLimits() {
-      const enabled = document.getElementById("limitEnabled").checked;
+    async function saveGatewaySettings() {
+      const rlEnabled = document.getElementById("rlEnabled").checked;
+      const rlLimit = parseInt(document.getElementById("rlLimit").value, 10);
+      const rlInterval = parseInt(document.getElementById("rlInterval").value, 10);
+      const rlTechnique = document.getElementById("rlTechnique").value;
+      const limitEnabled = document.getElementById("limitEnabled").checked;
       const budget = parseFloat(document.getElementById("limitBudget").value);
       const window = document.getElementById("limitWindow").value;
       const scope = document.getElementById("limitScope").value;
       try {
-        const res = await fetch(\`\${API}/api/limits\`, {
+        const res = await fetch(\`\${API}/api/settings\`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ enabled, budget, window, scope })
+          body: JSON.stringify({
+            rateLimit: { enabled: rlEnabled, limit: rlLimit, interval: rlInterval, technique: rlTechnique },
+            spendLimit: { enabled: limitEnabled, budget, window, scope }
+          })
         });
         const data = await res.json();
-        show("limitMessage", data.ok ? "Spend limits applied to gateway." : "Error: " + data.error, data.ok ? "success" : "error");
+        show("limitMessage", data.ok ? "Gateway settings applied." : "Error: " + data.error, data.ok ? "success" : "error");
       } catch (e) {
         show("limitMessage", "Error: " + e.message, "error");
       }
@@ -366,8 +523,11 @@ app.get("/", (c) => {
         if (data.ok) {
           document.getElementById("statRequests").textContent = data.requests ?? "-";
           document.getElementById("statTokens").textContent = data.tokens ?? "-";
-          document.getElementById("statCost").textContent = data.cost ? "\$" + data.cost : "-";
+          document.getElementById("statCost").textContent = data.cost ? "$" + data.cost : "-";
           document.getElementById("statRateLimited").textContent = data.rateLimited ?? "-";
+          document.getElementById("statCacheTTL").textContent = data.cacheTTL ?? "-";
+          document.getElementById("statRLLimit").textContent = data.rlLimit ?? "-";
+          document.getElementById("statSpendLimit").textContent = data.spendLimit ?? "-";
           document.getElementById("statsDetail").textContent = data.note || "";
         } else {
           document.getElementById("statsDetail").textContent = "Error: " + (data.error || "Unknown");
@@ -398,8 +558,13 @@ app.get("/", (c) => {
 
 app.post("/api/chat", async (c) => {
   const env = c.env;
-  const body = await c.req.json<{ model: string; prompt: string }>();
-  const { model, prompt } = body;
+  const body = await c.req.json<{
+    model: string;
+    prompt: string;
+    cache?: { ttl: number; key?: string; skip?: boolean };
+    metadata?: Record<string, string | number | boolean>;
+  }>();
+  const { model, prompt, cache, metadata } = body;
 
   // Read custom cost headers (set by client) or fall back to KV
   const hdrIn = c.req.header("x-custom-cost-in");
@@ -413,23 +578,35 @@ app.post("/api/chat", async (c) => {
     if (kv) customCost = JSON.parse(kv);
   }
 
-  const gatewayId = env.GATEWAY_NAME;
-
-  // Cloudflare REST API for Workers AI through AI Gateway
-  const upstreamUrl = `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai/v1/chat/completions`;
+  // Cloudflare REST API for Workers AI through AI Gateway custom domain
+  const upstreamUrl = `https://${env.GATEWAY_NAME}/compat/chat/completions`;
   const upstreamHeaders: Record<string, string> = {
     "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
     "Content-Type": "application/json",
-    "cf-aig-gateway-id": env.GATEWAY_NAME,
   };
   const upstreamBody = {
-    model,
+    model: `workers-ai/${model}`,
     messages: [{ role: "user", content: prompt }],
   };
 
   // Add custom cost header if configured
   if (customCost) {
     upstreamHeaders["cf-aig-custom-cost"] = JSON.stringify(customCost);
+  }
+
+  // Add caching headers
+  if (cache) {
+    if (cache.skip) {
+      upstreamHeaders["cf-aig-skip-cache"] = "true";
+    } else {
+      upstreamHeaders["cf-aig-cache-ttl"] = String(cache.ttl);
+      if (cache.key) upstreamHeaders["cf-aig-cache-key"] = cache.key;
+    }
+  }
+
+  // Add custom metadata header
+  if (metadata && Object.keys(metadata).length > 0) {
+    upstreamHeaders["cf-aig-metadata"] = JSON.stringify(metadata);
   }
 
   try {
@@ -439,6 +616,7 @@ app.post("/api/chat", async (c) => {
       body: JSON.stringify(upstreamBody),
     });
 
+    const cacheStatus = res.headers.get("cf-aig-cache-status") || undefined;
     const data = await res.json<any>();
 
     // Calculate estimated cost for display
@@ -455,8 +633,9 @@ app.post("/api/chat", async (c) => {
       model: data.model,
       usage: data.usage,
       estimatedCost,
+      cacheStatus,
       choices: data.choices,
-      error: data.error?.message,
+      error: data.error?.message || data.errors?.[0]?.message,
     }, res.status as any);
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
@@ -479,62 +658,77 @@ app.post("/api/costs", async (c) => {
   return c.json({ ok: true });
 });
 
-// ─── API: Spend Limits ───────────────────────────────────────────────────────
+// ─── API: Gateway Settings ────────────────────────────────────────────────────
 
-app.get("/api/limits", async (c) => {
-  const kv = await c.env.SETTINGS.get("spend_limits");
-  return c.json({ ok: true, limits: kv ? JSON.parse(kv) : null });
-});
-
-app.post("/api/limits", async (c) => {
+app.post("/api/settings", async (c) => {
   const env = c.env;
   const body = await c.req.json<{
-    enabled: boolean;
-    budget: number;
-    window: string;
-    scope: string;
+    rateLimit: { enabled: boolean; limit: number; interval: number; technique: string };
+    spendLimit: { enabled: boolean; budget: number; window: string; scope: string };
   }>();
 
-  // Store in KV
-  await env.SETTINGS.put("spend_limits", JSON.stringify(body));
+  // 1. Update gateway rate limiting
+  const gwUpdateRes = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
+    {
+      method: "PUT",
+      headers: {
+        "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        rate_limiting_limit: body.rateLimit.enabled ? body.rateLimit.limit : 0,
+        rate_limiting_interval: body.rateLimit.enabled ? body.rateLimit.interval : 0,
+        rate_limiting_technique: body.rateLimit.technique,
+      }),
+    }
+  );
 
-  if (!body.enabled) {
-    // Disable all spend limit rules (best effort: list and delete)
-    try {
-      const listRes = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_NAME}/spend-limits`,
-        { headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
-      );
-      const list = await listRes.json<any>();
-      if (list.result) {
-        for (const rule of list.result) {
-          await fetch(
-            `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_NAME}/spend-limits/${rule.id}`,
-            { method: "DELETE", headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
-          );
-        }
-      }
-    } catch (e) {}
-    return c.json({ ok: true, note: "Spend limits disabled." });
+  if (!gwUpdateRes.ok) {
+    const errData = await gwUpdateRes.json<any>();
+    return c.json({ ok: false, error: errData.errors?.[0]?.message || "Failed to update gateway" }, 502);
   }
 
-  // Create a spend limit rule via Cloudflare API
+  // 2. Handle spend limits — clear existing rules first
+  try {
+    const listRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}/spend-limits`,
+      { headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
+    );
+    const list = await listRes.json<any>();
+    if (list.result) {
+      for (const rule of list.result) {
+        await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}/spend-limits/${rule.id}`,
+          { method: "DELETE", headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
+        );
+      }
+    }
+  } catch (e) {}
+
+  await env.SETTINGS.put("gateway_settings", JSON.stringify(body));
+
+  if (!body.spendLimit.enabled) {
+    return c.json({ ok: true, note: "Rate limiting updated. Spend limits disabled." });
+  }
+
+  // Create a spend limit rule
   const dimensions: any = {};
-  if (body.scope === "model") {
+  if (body.spendLimit.scope === "model") {
     dimensions.model = { mode: "split_by_value" };
-  } else if (body.scope === "provider") {
+  } else if (body.spendLimit.scope === "provider") {
     dimensions.provider = { mode: "split_by_value" };
   }
 
   const payload = {
-    budget: body.budget,
-    window: body.window,
+    budget: body.spendLimit.budget,
+    window: body.spendLimit.window,
     dimensions,
   };
 
   try {
     const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_NAME}/spend-limits`,
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}/spend-limits`,
       {
         method: "POST",
         headers: {
@@ -560,7 +754,7 @@ app.get("/api/stats", async (c) => {
   const env = c.env;
   try {
     const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_NAME}`,
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
       { headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
     );
     const data = await res.json<any>();
@@ -568,6 +762,7 @@ app.get("/api/stats", async (c) => {
       return c.json({
         ok: false,
         error: data.errors?.[0]?.message || "Could not fetch stats",
+        status: res.status,
         note: "Ensure your API token has AI Gateway - Read permission.",
       });
     }
@@ -579,6 +774,10 @@ app.get("/api/stats", async (c) => {
       tokens: gw.total_tokens ?? "-",
       cost: gw.total_cost ?? "-",
       rateLimited: gw.rate_limited_requests ?? "-",
+      cacheTTL: gw.cache_ttl ?? 0,
+      rlLimit: gw.rate_limiting_limit ?? 0,
+      rlInterval: gw.rate_limiting_interval ?? 0,
+      spendLimit: gw.spend_limits?.enabled ? "On" : "Off",
       note: "Stats from Cloudflare AI Gateway API.",
     });
   } catch (err: any) {
@@ -592,7 +791,7 @@ app.get("/api/bootstrap", async (c) => {
   const env = c.env;
   try {
     const res = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_NAME}`,
+      `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
       { headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
     );
     if (res.status === 404) {
@@ -604,7 +803,7 @@ app.get("/api/bootstrap", async (c) => {
             "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ id: env.GATEWAY_NAME, name: env.GATEWAY_NAME }),
+          body: JSON.stringify({ id: env.GATEWAY_ID, name: env.GATEWAY_ID }),
         }
       );
       const data = await create.json<any>();

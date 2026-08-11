@@ -4,6 +4,17 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 
 ---
 
+## Demo URLs
+
+| URL | Mode | Identity | Access |
+|---|---|---|---|
+| `https://ai-gw.jsherron.com/demo` | Gateway (human) | `cf.user_id` — shows in dashboard | Browser login (OTP/IdP) |
+| `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` | Worker proxy (service) | `cf.common_name` — logs API only | None (Worker holds service token) |
+
+See [`demo-script.md`](./demo-script.md) for a full walkthrough of both modes plus all gateway features.
+
+---
+
 ## Architecture
 
 ```
@@ -249,5 +260,6 @@ ai-gateway-demo/
 ├── tsconfig.json
 ├── package.json
 ├── README.md
+├── demo-script.md      # Full demo walkthrough (both modes + all features)
 └── AGENTS.md             # Agent context for future sessions
 ```

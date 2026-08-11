@@ -22,10 +22,12 @@ Two demo modes, one Worker:
           → ai-gw.jsherron.com/demo/api/* (Worker handles management with service token)
 
 2. Service identity (Worker proxies everything):
-   Client → Worker /api/chat → AI Gateway (custom domain with service token) → Workers AI
-                             → cf.common_name in logs (NOT cf.user_id)
+   Client → workers.dev URL /api/chat → AI Gateway (custom domain with service token) → Workers AI
+                                        → cf.common_name in logs (NOT cf.user_id)
 ```
 
+- **Gateway mode URL**: `https://ai-gw.jsherron.com/demo` — behind Access, human identity
+- **Worker proxy URL**: `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` — no Access, service token
 - **Worker routes**: `ai-gw.jsherron.com/demo` and `ai-gw.jsherron.com/demo/*` (zone: jsherron.com)
 - **Gateway direct**: `ai-gw.jsherron.com/compat/chat/completions` goes directly to AI Gateway (no Worker route)
 - **Management calls** (stats, settings) use the gateway **ID** via Cloudflare REST API

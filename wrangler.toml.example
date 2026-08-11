@@ -3,11 +3,13 @@ main = "src/index.ts"
 compatibility_date = "2025-07-01"
 # account_id = "your_account_id"
 
-# Worker routes on your gateway custom domain (optional, for Identity-Aware Gateway)
+# Worker routes on your gateway custom domain (for Identity-Aware Gateway)
+# Also enable workers_dev = true to get the Worker proxy URL for service token demos
 # routes = [
 #   { pattern = "your-custom-domain.com/demo", zone_name = "your-domain.com" },
 #   { pattern = "your-custom-domain.com/demo/*", zone_name = "your-domain.com" }
 # ]
+# workers_dev = true
 
 [vars]
 GATEWAY_NAME = "your-custom-domain.com"

@@ -47,14 +47,14 @@ A complete Cloudflare AI Gateway demo with a web client that generates traffic t
 cd ~/src/ai-gateway-demo
 npm install
 
-# Create KV namespace and paste ID into wrangler.toml
-npx wrangler kv namespace create SETTINGS
-
-# Configure wrangler.toml:
+# Copy the template and fill in your values
+cp wrangler.toml.example wrangler.toml
+# Edit wrangler.toml:
 # - Set account_id
 # - Set GATEWAY_NAME to your custom domain (e.g. "ai-gw.jsherron.com")
 # - Set GATEWAY_ID to your actual gateway ID (e.g. "ai-cost-demo")
-# - Paste KV namespace id
+# - Create KV namespace: npx wrangler kv namespace create SETTINGS
+# - Paste the KV id into wrangler.toml
 
 # Set secrets
 npx wrangler secret put CLOUDFLARE_API_TOKEN
@@ -202,11 +202,13 @@ Worker starts on `http://localhost:8787`.
 ```
 ai-gateway-demo/
 ├── src/
-│   └── index.ts          # Hono Worker (UI + API)
+│   ├── index.ts          # Hono Worker (UI + API)
+│   └── index.test.ts     # Vitest tests
 ├── scripts/
-│   ├── create-gateway.ts # CLI: create demo-gateway
+│   ├── create-gateway.ts # CLI: create gateway
 │   └── setup-limits.ts   # CLI: create spend limit rule
-├── wrangler.toml         # Worker config (KV binding, vars)
+├── wrangler.toml         # Your local config (gitignored!)
+├── wrangler.toml.example # Template for new users
 ├── tsconfig.json
 ├── package.json
 ├── README.md

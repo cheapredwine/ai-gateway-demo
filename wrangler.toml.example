@@ -3,6 +3,12 @@ main = "src/index.ts"
 compatibility_date = "2025-07-01"
 # account_id = "your_account_id"
 
+# Worker routes on your gateway custom domain (optional, for Identity-Aware Gateway)
+# routes = [
+#   { pattern = "your-custom-domain.com/demo", zone_name = "your-domain.com" },
+#   { pattern = "your-custom-domain.com/demo/*", zone_name = "your-domain.com" }
+# ]
+
 [vars]
 GATEWAY_NAME = "your-custom-domain.com"
 GATEWAY_ID = "demo-gateway"
@@ -15,3 +21,5 @@ binding = "SETTINGS"
 # Secrets required (set via wrangler secret put):
 # - CLOUDFLARE_API_TOKEN: Token with AI Gateway Edit + Read + Workers AI Read
 # - CLOUDFLARE_ACCOUNT_ID: Your Cloudflare account ID
+# - CF_ACCESS_CLIENT_ID: Cloudflare Access service token client ID (for Identity-Aware Gateway)
+# - CF_ACCESS_CLIENT_SECRET: Cloudflare Access service token client secret

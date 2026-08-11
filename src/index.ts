@@ -7,6 +7,8 @@ type Env = {
   CLOUDFLARE_ACCOUNT_ID: string;
   GATEWAY_NAME: string;
   GATEWAY_ID: string;
+  CF_ACCESS_CLIENT_ID: string;
+  CF_ACCESS_CLIENT_SECRET: string;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -15,7 +17,11 @@ app.use("*", cors());
 
 // ─── HTML Client ─────────────────────────────────────────────────────────────
 
-app.get("/", (c) => {
+app.get("/", (c) => serveHtml(c));
+app.get("/demo", (c) => serveHtml(c));
+app.get("/demo/", (c) => serveHtml(c));
+
+function serveHtml(c: any) {
   return c.html(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -389,7 +395,8 @@ app.get("/", (c) => {
   </div>
 
   <script>
-    const API = "";
+    const onGateway = window.location.pathname.startsWith("/demo");
+    const API = onGateway ? "/demo" : "";
 
     function log(msg, type="info") {
       const el = document.getElementById("chatOutput");
@@ -435,31 +442,79 @@ app.get("/", (c) => {
       for (let i = 0; i < count; i++) {
         log(\`Sending #\${i+1} to \${model}...\`, "info");
         try {
-          const headers = { "Content-Type": "application/json" };
-          if (useCustom) {
-            headers["x-custom-cost-in"] = costIn;
-            headers["x-custom-cost-out"] = costOut;
-          }
-          const res = await fetch(\`\${API}/api/chat\`, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
-              model,
-              prompt,
-              cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
-              metadata: useMetadata && metaKey ? { [metaKey]: metaValue } : undefined
-            })
-          });
-          const data = await res.json();
-          if (res.status === 429) {
-            log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
-          } else if (res.ok) {
-            const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
-            const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
-            const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
-            log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
+          if (onGateway) {
+            // Gateway mode: call /compat/chat/completions directly (Access injects cf.user_id)
+            const headers = { "Content-Type": "application/json" };
+            if (useCustom) {
+              headers["cf-aig-custom-cost"] = JSON.stringify({ per_token_in: costIn, per_token_out: costOut });
+            }
+            if (useCache) {
+              if (skipCache) {
+                headers["cf-aig-skip-cache"] = "true";
+              } else {
+                headers["cf-aig-cache-ttl"] = String(cacheTTL);
+                if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;
+              }
+            }
+            if (useMetadata && metaKey) {
+              headers["cf-aig-metadata"] = JSON.stringify({ [metaKey]: metaValue });
+            }
+            const res = await fetch("/compat/chat/completions", {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                model: "workers-ai/" + model,
+                messages: [{ role: "user", content: prompt }]
+              })
+            });
+            const data = await res.json();
+            if (res.status === 429) {
+              log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
+            } else if (res.ok) {
+              const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
+              const cacheStatus = res.headers.get("cf-aig-cache-status");
+              const cacheStr = cacheStatus ? \` | cache \${cacheStatus}\` : "";
+              let costStr = "?";
+              if (useCustom && data.usage) {
+                const est = (data.usage.prompt_tokens ?? 0) * costIn + (data.usage.completion_tokens ?? 0) * costOut;
+                costStr = "$" + est.toFixed(6);
+              }
+              log(\`OK \${tokens} tokens | est cost \${costStr}\${cacheStr} | \${data.model || model}\`, "success");
+              const content = data.choices?.[0]?.message?.content;
+              if (content) log(\`  > \${content}\`, "info");
+            } else {
+              log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
+            }
           } else {
-            log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
+            // Worker mode: proxy through /api/chat (service token auth)
+            const headers = { "Content-Type": "application/json" };
+            if (useCustom) {
+              headers["x-custom-cost-in"] = costIn;
+              headers["x-custom-cost-out"] = costOut;
+            }
+            const res = await fetch(\`\${API}/api/chat\`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify({
+                model,
+                prompt,
+                cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
+                metadata: useMetadata && metaKey ? { [metaKey]: metaValue } : undefined
+              })
+            });
+            const data = await res.json();
+            if (res.status === 429) {
+              log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
+            } else if (res.ok) {
+              const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
+              const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
+              const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
+              log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
+              const content = data.choices?.[0]?.message?.content;
+              if (content) log(\`  > \${content}\`, "info");
+            } else {
+              log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
+            }
           }
         } catch (e) {
           log("Network error: " + e.message, "error");
@@ -552,18 +607,25 @@ app.get("/", (c) => {
   </script>
 </body>
 </html>`);
-});
+}
+
+// ─── API Routes (mounted under both /api and /demo/api) ────────────────────────
+
+function dualRoute(method: "get" | "post", path: string, handler: any) {
+  (app as any)[method](`/api${path}`, handler);
+  (app as any)[method](`/demo/api${path}`, handler);
+}
 
 // ─── API: Chat ───────────────────────────────────────────────────────────────
 
-app.post("/api/chat", async (c) => {
+const chatHandler = async (c: any) => {
   const env = c.env;
-  const body = await c.req.json<{
+  const body = await c.req.json() as {
     model: string;
     prompt: string;
     cache?: { ttl: number; key?: string; skip?: boolean };
     metadata?: Record<string, string | number | boolean>;
-  }>();
+  };
   const { model, prompt, cache, metadata } = body;
 
   // Read custom cost headers (set by client) or fall back to KV
@@ -579,10 +641,13 @@ app.post("/api/chat", async (c) => {
   }
 
   // Cloudflare REST API for Workers AI through AI Gateway custom domain
+  // Service token auth for Identity-Aware Gateway (Cloudflare Access)
   const upstreamUrl = `https://${env.GATEWAY_NAME}/compat/chat/completions`;
   const upstreamHeaders: Record<string, string> = {
     "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
     "Content-Type": "application/json",
+    "CF-Access-Client-Id": env.CF_ACCESS_CLIENT_ID,
+    "CF-Access-Client-Secret": env.CF_ACCESS_CLIENT_SECRET,
   };
   const upstreamBody = {
     model: `workers-ai/${model}`,
@@ -617,7 +682,9 @@ app.post("/api/chat", async (c) => {
     });
 
     const cacheStatus = res.headers.get("cf-aig-cache-status") || undefined;
-    const data = await res.json<any>();
+    const rawText = await res.text();
+    let data: any;
+    try { data = JSON.parse(rawText); } catch { data = { _raw: rawText }; }
 
     // Calculate estimated cost for display
     let estimatedCost: number | undefined;
@@ -640,32 +707,35 @@ app.post("/api/chat", async (c) => {
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
   }
-});
+};
+dualRoute("post", "/chat", chatHandler);
 
 // ─── API: Custom Costs ───────────────────────────────────────────────────────
 
-app.get("/api/costs", async (c) => {
+const costsGetHandler = async (c: any) => {
   const kv = await c.env.SETTINGS.get("custom_costs");
   return c.json({ ok: true, costs: kv ? JSON.parse(kv) : null });
-});
+};
+dualRoute("get", "/costs", costsGetHandler);
 
-app.post("/api/costs", async (c) => {
-  const body = await c.req.json<{ per_token_in: number; per_token_out: number }>();
+const costsPostHandler = async (c: any) => {
+  const body = await c.req.json() as { per_token_in: number; per_token_out: number };
   await c.env.SETTINGS.put("custom_costs", JSON.stringify({
     per_token_in: body.per_token_in,
     per_token_out: body.per_token_out,
   }));
   return c.json({ ok: true });
-});
+};
+dualRoute("post", "/costs", costsPostHandler);
 
 // ─── API: Gateway Settings ────────────────────────────────────────────────────
 
-app.post("/api/settings", async (c) => {
+const settingsHandler = async (c: any) => {
   const env = c.env;
-  const body = await c.req.json<{
+  const body = await c.req.json() as {
     rateLimit: { enabled: boolean; limit: number; interval: number; technique: string };
     spendLimit: { enabled: boolean; budget: number; window: string; scope: string };
-  }>();
+  };
 
   // 1. Update gateway rate limiting
   const gwUpdateRes = await fetch(
@@ -746,48 +816,107 @@ app.post("/api/settings", async (c) => {
   } catch (err: any) {
     return c.json({ ok: false, error: err.message }, 500);
   }
-});
+};
+dualRoute("post", "/settings", settingsHandler);
 
 // ─── API: Stats ──────────────────────────────────────────────────────────────
 
-app.get("/api/stats", async (c) => {
+const statsHandler = async (c: any) => {
   const env = c.env;
   try {
-    const res = await fetch(
+    // Fetch config for live settings
+    const configRes = await fetch(
       `https://api.cloudflare.com/client/v4/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
       { headers: { "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}` } }
     );
-    const data = await res.json<any>();
-    if (!res.ok) {
-      return c.json({
-        ok: false,
-        error: data.errors?.[0]?.message || "Could not fetch stats",
-        status: res.status,
-        note: "Ensure your API token has AI Gateway - Read permission.",
-      });
+    const configData = await configRes.json<any>();
+    const gw = configRes.ok ? configData.result : {};
+
+    // Fetch analytics via GraphQL
+    const now = new Date();
+    const start = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(); // last 24h
+    const graphqlRes = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        query: `
+          query GetAIGatewayAnalytics($accountTag: String!, $gateway: String!, $start: Time!, $end: Time!) {
+            viewer {
+              accounts(filter: { accountTag: $accountTag }) {
+                aiGatewayRequestsAdaptiveGroups(
+                  limit: 1000
+                  filter: { datetimeHour_geq: $start, datetimeHour_leq: $end, gateway: $gateway }
+                  orderBy: [datetimeMinute_ASC]
+                ) {
+                  count
+                  sum {
+                    responseTokens
+                    promptTokens
+                    cost
+                  }
+                  avg {
+                    responseTokens
+                    promptTokens
+                    cost
+                  }
+                  dimensions {
+                    model
+                    provider
+                    gateway
+                    ts: datetimeMinute
+                  }
+                }
+              }
+            }
+          }
+        `,
+        variables: {
+          accountTag: env.CLOUDFLARE_ACCOUNT_ID,
+          gateway: env.GATEWAY_ID,
+          start,
+          end: now.toISOString(),
+        },
+      }),
+    });
+
+    let requests = 0;
+    let tokens = 0;
+    let cost = 0;
+
+    if (graphqlRes.ok) {
+      const gqData = await graphqlRes.json<any>();
+      const groups = gqData?.data?.viewer?.accounts?.[0]?.aiGatewayRequestsAdaptiveGroups || [];
+      for (const g of groups) {
+        requests += g.count ?? 0;
+        tokens += (g.sum?.responseTokens ?? 0) + (g.sum?.promptTokens ?? 0);
+        cost += g.sum?.cost ?? 0;
+      }
     }
 
-    const gw = data.result;
     return c.json({
       ok: true,
-      requests: gw.total_requests ?? "-",
-      tokens: gw.total_tokens ?? "-",
-      cost: gw.total_cost ?? "-",
+      requests: requests || "-",
+      tokens: tokens || "-",
+      cost: cost ? `$${cost.toFixed(4)}` : "-",
       rateLimited: gw.rate_limited_requests ?? "-",
       cacheTTL: gw.cache_ttl ?? 0,
       rlLimit: gw.rate_limiting_limit ?? 0,
       rlInterval: gw.rate_limiting_interval ?? 0,
       spendLimit: gw.spend_limits?.enabled ? "On" : "Off",
-      note: "Stats from Cloudflare AI Gateway API.",
+      note: "Stats from Cloudflare AI Gateway Analytics.",
     });
   } catch (err: any) {
     return c.json({ ok: false, error: err.message });
   }
-});
+};
+dualRoute("get", "/stats", statsHandler);
 
 // ─── Bootstrap: create gateway if missing ────────────────────────────────────
 
-app.get("/api/bootstrap", async (c) => {
+const bootstrapHandler = async (c: any) => {
   const env = c.env;
   try {
     const res = await fetch(
@@ -814,6 +943,36 @@ app.get("/api/bootstrap", async (c) => {
   } catch (err: any) {
     return c.json({ ok: false, error: err.message });
   }
-});
+};
+dualRoute("get", "/bootstrap", bootstrapHandler);
+
+// Debug: check Access auth
+const debugAccessHandler = async (c: any) => {
+  const env = c.env;
+  const res = await fetch(`https://${env.GATEWAY_NAME}/compat/chat/completions`, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.CLOUDFLARE_API_TOKEN}`,
+      "Content-Type": "application/json",
+      "CF-Access-Client-Id": env.CF_ACCESS_CLIENT_ID,
+      "CF-Access-Client-Secret": env.CF_ACCESS_CLIENT_SECRET,
+    },
+    body: JSON.stringify({
+      model: "workers-ai/@cf/meta/llama-3.1-8b-instruct-fast",
+      messages: [{ role: "user", content: "ping" }],
+    }),
+  });
+  const raw = await res.text();
+  return c.json({
+    status: res.status,
+    sentHeaders: {
+      "CF-Access-Client-Id": env.CF_ACCESS_CLIENT_ID ? "set" : "missing",
+      "CF-Access-Client-Secret": env.CF_ACCESS_CLIENT_SECRET ? "set" : "missing",
+    },
+    responseHeaders: Object.fromEntries(res.headers.entries()),
+    raw: raw.substring(0, 500),
+  });
+};
+dualRoute("get", "/debug-access", debugAccessHandler);
 
 export default app;

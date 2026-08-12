@@ -21,7 +21,13 @@ app.get("/", (c) => serveHtml(c));
 app.get("/demo", (c) => serveHtml(c));
 app.get("/demo/", (c) => serveHtml(c));
 
+app.get("/demo/logout", (c) => {
+  c.header("Set-Cookie", "CF_Authorization=; Path=/; Secure; HttpOnly; SameSite=None; Expires=Thu, 01 Jan 1970 00:00:01 GMT");
+  return c.redirect("/demo");
+});
+
 function serveHtml(c: any) {
+  const isGateway = c.req.path.startsWith("/demo");
   return c.html(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -124,7 +130,7 @@ function serveHtml(c: any) {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>${c.env.GATEWAY_NAME}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span></p>
+    <p class="subtitle">Gateway: <strong>${c.env.GATEWAY_NAME}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span>${isGateway ? ' | <button id="logoutBtn" onclick="accessLogout()" style="background:#dc2626;color:white;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-left:0.5rem;">Access Logout</button>' : ''}</p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->
@@ -407,6 +413,10 @@ function serveHtml(c: any) {
       const time = new Date().toLocaleTimeString();
       el.innerHTML += \`[\${time}] <span class="\${type}">\${msg}</span>\\n\`;
       el.scrollTop = el.scrollHeight;
+    }
+
+    function accessLogout() {
+      window.location.href = "/cdn-cgi/access/logout";
     }
 
     function show(id, msg, type="success") {

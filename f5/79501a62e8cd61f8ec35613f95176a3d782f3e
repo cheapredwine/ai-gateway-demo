@@ -1,0 +1,19 @@
+src/index.ts
+  s_98196acd4a4b46::t_2eb18165c07cc2 24-28,30,133,418-421
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f579501a62e8cd61f8ec35613f95176a3d782f3e",
+  "prompts": {},
+  "sessions": {
+    "s_98196acd4a4b46": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_00d24f382ffeA0gRBtIt6Lgh5V",
+        "model": "@cf/zai-org/glm-5.1"
+      },
+      "human_author": "Jason Sherron <jsherron@cloudflare.com>"
+    }
+  }
+}

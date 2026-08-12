@@ -416,7 +416,7 @@ function serveHtml(c: any) {
     }
 
     function accessLogout() {
-      window.location.href = "/cdn-cgi/access/logout";
+      window.location.href = "/demo/logout";
     }
 
     function show(id, msg, type="success") {

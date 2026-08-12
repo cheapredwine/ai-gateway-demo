@@ -22,8 +22,8 @@ app.get("/demo", (c) => serveHtml(c));
 app.get("/demo/", (c) => serveHtml(c));
 
 app.get("/demo/logout", (c) => {
-  c.header("Set-Cookie", "CF_Authorization=; Path=/; Secure; HttpOnly; SameSite=None; Expires=Thu, 01 Jan 1970 00:00:01 GMT");
-  return c.redirect("/demo");
+  const logoutUrl = "https://ai-gw.jsherron.com/cdn-cgi/access/logout";
+  return c.redirect(logoutUrl);
 });
 
 function serveHtml(c: any) {

@@ -416,7 +416,13 @@ function serveHtml(c: any) {
     }
 
     function accessLogout() {
-      window.location.href = "/demo/logout";
+      fetch("https://ai-gw.jsherron.com/cdn-cgi/access/logout", { credentials: "include" })
+        .catch(() => {})
+        .finally(() => {
+          const el = document.getElementById("chatOutput");
+          if (el) el.innerHTML = '<div class="message info">Logged out. Redirecting to login in 2 seconds...</div>';
+          setTimeout(() => { window.location.href = "/demo"; }, 2000);
+        });
     }
 
     function show(id, msg, type="success") {

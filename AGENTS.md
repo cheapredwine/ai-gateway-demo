@@ -142,10 +142,24 @@ Body:
 2. Create a [Cloudflare Access application](https://developers.cloudflare.com/cloudflare-one/policies/access/) for that domain
 3. Create a service token and add a Service Auth policy at #1
 4. Set `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` as Worker secrets
-5. Authenticate via SAML IDP (Okta, Entra, etc.) for human identity
+5. Authenticate via SAML IdP (Okta, Entra, etc.) for human identity
 6. AI Gateway automatically injects `cf.user_id` metadata on human requests
 7. Service token requests get `cf.common_name` instead (visible in logs API, not dashboard)
 8. Enables per-user spend limits, per-user rate limits, and User Insights behavioral baselines
+
+### WARP Seamless Auth (Optional)
+- Enable "Authenticate with Cloudflare One Client" on the Access application (not the policy)
+- Requires WARP enrolled in the **same Zero Trust org** as the Access app
+- Cross-org WARP enrollment does NOT work for seamless auth (policy allows the email, but WARP session must be from the same org)
+- When working: browser goes straight to the UI — no OTP/IdP login page
+- When not working: Access shows the OTP/IdP login page (still authenticates fine, just not seamless)
+- To switch WARP org: `warp-cli registration new <team-name>` (replaces existing enrollment)
+
+### Access Logout
+- Logout button shown only in gateway mode (when `isGateway` is true server-side)
+- Client-side: `fetch("/cdn-cgi/access/logout")` → wait 2s → redirect to `/demo`
+- The 2s delay avoids a race condition where Access re-issues the cookie before the IdP session is fully invalidated
+- The `/demo/logout` server-side route exists as a fallback but is not used by the button
 
 ### Model Selector
 - 20+ pre-populated Workers AI models organized by provider (Meta, Mistral, DeepSeek, Google, Qwen, OpenAI, Moonshot, Other)
@@ -219,6 +233,8 @@ npm run deploy
 - Max 20 spend limit rules per gateway
 - Gateway stats endpoint may vary; adjust `/api/stats` if Cloudflare API changes
 - Identity-Aware Gateway requires a custom domain and Cloudflare Access (not configurable through this Worker)
+- WARP seamless auth requires same-org WARP enrollment; cross-org shows OTP page instead
+- Access logout race condition: immediate re-login after logout can fail; 2s delay in the client-side logout handles this
 
 ## Public Template Notes
 

@@ -22,8 +22,19 @@
 5. The AI Gateway demo UI loads
 
 > **Talking point:** The browser authenticated through Cloudflare Access. Every request from this browser session will carry the user's identity. No API token is exposed to the browser.
+>
+> **WARP seamless auth (optional):** If WARP is enrolled in the same Zero Trust org and "Authenticate with Cloudflare One Client" is enabled on the Access app, the browser goes straight to the UI — no login page. Cross-org WARP enrollment does not work for seamless auth; the user still gets the OTP page. For the demo, speak to this rather than re-enrolling WARP live (switching orgs is error-prone mid-demo).
 
-### 1.2 Generate traffic
+### 1.2 Logout and re-login (demo flow)
+
+1. Click the red **Access Logout** button (visible only in gateway mode)
+2. The UI shows "Logged out. Redirecting to login in 2 seconds..."
+3. After 2 seconds, the browser redirects to `/demo` — Access shows the login page again
+4. Log back in via OTP to continue the demo
+
+> **What's happening:** The button fetches `/cdn-cgi/access/logout` to invalidate the IdP session, waits 2 seconds for the session to fully clear, then redirects to `/demo`. The 2s delay avoids a race condition where Access re-issues the cookie before the session is invalidated.
+
+### 1.3 Generate traffic
 
 1. Pick a model (e.g., Llama 3.1 8B Instruct Fast)
 2. Type a prompt: "Explain AI Gateway in one sentence"
@@ -33,7 +44,7 @@
 
 > **What's happening:** The browser calls `/compat/chat/completions` directly on the same origin. Access injects `cf.user_id` into the request metadata. The AI Gateway logs the request with the human's identity.
 
-### 1.3 Verify identity in logs
+### 1.4 Verify identity in logs
 
 ```bash
 # Pull latest logs from the API
@@ -48,7 +59,7 @@ for log in json.load(sys.stdin).get('result', [])[:5]:
 
 Expected: `cf.user_id` with a UUID, user agent shows `Mozilla/5.0` (browser).
 
-### 1.4 Show the dashboard
+### 1.5 Show the dashboard
 
 1. Open the [AI Gateway dashboard](https://dash.cloudflare.com/?to=/:account/ai-gateway)
 2. Select the `ai-cost-demo` gateway

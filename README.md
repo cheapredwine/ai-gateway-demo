@@ -184,6 +184,14 @@ This enables:
 
 > **Note:** Service token identity (`cf.common_name`) appears in the logs API but does NOT appear in the AI Gateway dashboard. Only human identity (`cf.user_id` from IdP authentication) is surfaced in the dashboard's User Insights and per-user analytics views.
 
+### WARP Seamless Auth (Optional)
+
+Enable "Authenticate with Cloudflare One Client" on the Access application to allow WARP users to skip the login page. Requires WARP enrolled in the **same Zero Trust org** as the Access app. Cross-org WARP enrollment does not work for seamless auth (the policy allows the email, but the WARP session must be from the same org). When not configured, users get the standard OTP/IdP login page.
+
+### Access Logout
+
+A red **Access Logout** button appears in gateway mode. It fetches `/cdn-cgi/access/logout` to invalidate the IdP session, waits 2 seconds (to avoid a race condition where Access re-issues the cookie), then redirects to `/demo` to show the login page again.
+
 ---
 
 ## API Endpoints
@@ -192,6 +200,7 @@ This enables:
 |---|---|---|
 | `GET` | `/` | Web UI (Worker proxy mode) |
 | `GET` | `/demo` | Web UI (gateway mode, behind Access) |
+| `GET` | `/demo/logout` | Redirect to Access logout endpoint (fallback, not used by button) |
 | `POST` | `/api/chat` | Proxy chat request to Workers AI via AI Gateway (service token) |
 | `POST` | `/demo/api/chat` | Same, under `/demo` prefix |
 | `GET` | `/api/costs` | Read current custom costs from KV |
@@ -242,6 +251,8 @@ Worker starts on `http://localhost:8787`.
 | `429 Too Many Requests` from chat | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget. |
 | `Model not found` | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct`). |
 | `Workers AI unauthorized` | Add **Workers AI — Read** permission to your API token. |
+| `WARP doesn't auto-login` | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead. |
+| `Logout then re-login fails` | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically. |
 
 ---
 

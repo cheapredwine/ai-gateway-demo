@@ -193,9 +193,16 @@ function serveHtml(c: any) {
         </div>
 
         <hr style="border-color:#334155;margin:1rem 0">
-        <h3 style="font-size:0.9rem;color:#94a3b8;margin-bottom:0.5rem">Cache &amp; Metadata</h3>
+        <h3 style="font-size:0.9rem;color:#94a3b8;margin-bottom:0.5rem">Session &amp; Metadata</h3>
 
-        <div class="toggle">
+        <label>Session ID</label>
+        <div class="row">
+          <input type="text" id="sessionId" readonly style="font-family:monospace;font-size:0.8rem">
+          <button class="secondary" onclick="newSessionId()" style="white-space:nowrap">New</button>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Sent as <code>session_id</code> in cf-aig-metadata. AI Gateway promotes it to <code>metadataSessionId</code> in analytics.</p>
+
+        <div class="toggle" style="margin-top:0.75rem">
           <input type="checkbox" id="useCache" onchange="onCacheToggle()">
           <label for="useCache" style="margin:0">Enable caching (cf-aig-cache-ttl)</label>
         </div>
@@ -241,33 +248,47 @@ function serveHtml(c: any) {
         <div id="chatOutput" class="chat-area muted">Responses will appear here...</div>
       </div>
 
-      <!-- Custom Costs -->
+      <!-- Stats -->
       <div class="card">
-        <h2><span>💰</span> Custom Costs</h2>
-        <p class="muted">Override per-token pricing on each request via the <code>cf-aig-custom-cost</code> header.</p>
+        <h2><span>📊</span> Gateway Stats</h2>
+        <button class="secondary" onclick="loadStats()" style="margin-top:0;margin-bottom:1rem">Refresh Stats</button>
 
-        <div class="cost-inputs">
-          <div>
-            <label>Input token cost ($)</label>
-            <input type="number" id="costIn" value="0.000001" step="0.0000001">
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-value" id="statRequests">-</div>
+            <div class="stat-label">Requests</div>
           </div>
-          <div>
-            <label>Output token cost ($)</label>
-            <input type="number" id="costOut" value="0.000002" step="0.0000001">
+          <div class="stat-box">
+            <div class="stat-value" id="statTokens">-</div>
+            <div class="stat-label">Tokens</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="statCost">-</div>
+            <div class="stat-label">Est. Cost</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" id="statRateLimited">-</div>
+            <div class="stat-label">Rate Limited</div>
           </div>
         </div>
 
-        <button onclick="saveCosts()">Save to KV</button>
-        <div id="costMessage"></div>
-
-        <hr style="border-color:#334155;margin:1rem 0">
-
-        <label>Quick Presets</label>
-        <div class="row">
-          <button class="secondary" onclick="setPreset(0.000001,0.000002)">Cheap</button>
-          <button class="secondary" onclick="setPreset(0.00001,0.00003)">Mid</button>
-          <button class="secondary" onclick="setPreset(0.0001,0.0003)">Expensive</button>
+        <h3 style="font-size:0.85rem;color:#94a3b8;margin-top:1rem;margin-bottom:0.5rem">Live Gateway Config</h3>
+        <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr">
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statCacheTTL">-</div>
+            <div class="stat-label">Cache TTL</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statRLLimit">-</div>
+            <div class="stat-label">Rate Limit</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statSpendLimit">-</div>
+            <div class="stat-label">Spend Limit</div>
+          </div>
         </div>
+
+        <div id="statsDetail" class="muted" style="margin-top:1rem;font-size:0.8rem"></div>
       </div>
 
       <!-- Gateway Settings -->
@@ -317,47 +338,29 @@ function serveHtml(c: any) {
         <div id="limitMessage"></div>
       </div>
 
-      <!-- Stats -->
-      <div class="card">
-        <h2><span>📊</span> Gateway Stats</h2>
-        <button class="secondary" onclick="loadStats()" style="margin-top:0;margin-bottom:1rem">Refresh Stats</button>
+      <!-- Custom Costs (compact) -->
+      <div class="card" style="grid-column:2">
+        <h2><span>💰</span> Custom Costs</h2>
 
-        <div class="stats-grid">
-          <div class="stat-box">
-            <div class="stat-value" id="statRequests">-</div>
-            <div class="stat-label">Requests</div>
+        <div class="cost-inputs">
+          <div>
+            <label>Input token cost ($)</label>
+            <input type="number" id="costIn" value="0.000001" step="0.0000001">
           </div>
-          <div class="stat-box">
-            <div class="stat-value" id="statTokens">-</div>
-            <div class="stat-label">Tokens</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-value" id="statCost">-</div>
-            <div class="stat-label">Est. Cost</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-value" id="statRateLimited">-</div>
-            <div class="stat-label">Rate Limited</div>
+          <div>
+            <label>Output token cost ($)</label>
+            <input type="number" id="costOut" value="0.000002" step="0.0000001">
           </div>
         </div>
 
-        <h3 style="font-size:0.85rem;color:#94a3b8;margin-top:1rem;margin-bottom:0.5rem">Live Gateway Config</h3>
-        <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr">
-          <div class="stat-box">
-            <div class="stat-value" style="font-size:1rem" id="statCacheTTL">-</div>
-            <div class="stat-label">Cache TTL</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-value" style="font-size:1rem" id="statRLLimit">-</div>
-            <div class="stat-label">Rate Limit</div>
-          </div>
-          <div class="stat-box">
-            <div class="stat-value" style="font-size:1rem" id="statSpendLimit">-</div>
-            <div class="stat-label">Spend Limit</div>
-          </div>
-        </div>
+        <button onclick="saveCosts()">Save to KV</button>
+        <div id="costMessage"></div>
 
-        <div id="statsDetail" class="muted" style="margin-top:1rem;font-size:0.8rem"></div>
+        <div class="row" style="margin-top:0.75rem">
+          <button class="secondary" onclick="setPreset(0.000001,0.000002)">Cheap</button>
+          <button class="secondary" onclick="setPreset(0.00001,0.00003)">Mid</button>
+          <button class="secondary" onclick="setPreset(0.0001,0.0003)">Expensive</button>
+        </div>
       </div>
 
       <!-- Identity & Access -->
@@ -407,6 +410,16 @@ function serveHtml(c: any) {
     document.getElementById("identityMode").innerHTML = onGateway
       ? '<span style="color:#4ade80;">Access Identity (cf.user_id)</span>'
       : '<span style="color:#fbbf24;">Service Token (cf.common_name)</span>';
+
+    function generateSessionId() {
+      return "sess-" + Math.random().toString(36).slice(2, 10);
+    }
+
+    function newSessionId() {
+      document.getElementById("sessionId").value = generateSessionId();
+    }
+
+    newSessionId();
 
     function log(msg, type="info") {
       const el = document.getElementById("chatOutput");
@@ -458,9 +471,16 @@ function serveHtml(c: any) {
       const useMetadata = document.getElementById("useMetadata").checked;
       const metaKey = document.getElementById("metaKey").value;
       const metaValue = document.getElementById("metaValue").value;
+      const sessionId = document.getElementById("sessionId").value;
+
+      const buildMetadata = () => {
+        const m = { session_id: sessionId };
+        if (useMetadata && metaKey) m[metaKey] = metaValue;
+        return m;
+      };
 
       for (let i = 0; i < count; i++) {
-        log(\`Sending #\${i+1} to \${model}...\`, "info");
+        log(\`Sending #\${i+1} to \${model} [session: \${sessionId}]...\`, "info");
         try {
           if (onGateway) {
             // Gateway mode: call /compat/chat/completions directly (Access injects cf.user_id)
@@ -477,7 +497,9 @@ function serveHtml(c: any) {
               }
             }
             if (useMetadata && metaKey) {
-              headers["cf-aig-metadata"] = JSON.stringify({ [metaKey]: metaValue });
+              headers["cf-aig-metadata"] = JSON.stringify(buildMetadata());
+            } else {
+              headers["cf-aig-metadata"] = JSON.stringify({ session_id: sessionId });
             }
             const res = await fetch("/compat/chat/completions", {
               method: "POST",
@@ -519,7 +541,7 @@ function serveHtml(c: any) {
                 model,
                 prompt,
                 cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
-                metadata: useMetadata && metaKey ? { [metaKey]: metaValue } : undefined
+                metadata: buildMetadata()
               })
             });
             const data = await res.json();
@@ -563,6 +585,7 @@ function serveHtml(c: any) {
     function setPreset(inCost, outCost) {
       document.getElementById("costIn").value = inCost;
       document.getElementById("costOut").value = outCost;
+      saveCosts();
     }
 
     async function saveGatewaySettings() {
@@ -593,12 +616,12 @@ function serveHtml(c: any) {
     async function loadStats() {
       document.getElementById("statRequests").textContent = "...";
       try {
-        const res = await fetch(\`\${API}/api/stats\`);
+        const res = await fetch(\`\${API}/api/stats\`, { cache: "no-store" });
         const data = await res.json();
         if (data.ok) {
           document.getElementById("statRequests").textContent = data.requests ?? "-";
           document.getElementById("statTokens").textContent = data.tokens ?? "-";
-          document.getElementById("statCost").textContent = data.cost ? "$" + data.cost : "-";
+          document.getElementById("statCost").textContent = data.cost || "-";
           document.getElementById("statRateLimited").textContent = data.rateLimited ?? "-";
           document.getElementById("statCacheTTL").textContent = data.cacheTTL ?? "-";
           document.getElementById("statRLLimit").textContent = data.rlLimit ?? "-";
@@ -873,13 +896,8 @@ const statsHandler = async (c: any) => {
                 ) {
                   count
                   sum {
-                    responseTokens
-                    promptTokens
-                    cost
-                  }
-                  avg {
-                    responseTokens
-                    promptTokens
+                    tokensIn
+                    tokensOut
                     cost
                   }
                   dimensions {
@@ -911,7 +929,7 @@ const statsHandler = async (c: any) => {
       const groups = gqData?.data?.viewer?.accounts?.[0]?.aiGatewayRequestsAdaptiveGroups || [];
       for (const g of groups) {
         requests += g.count ?? 0;
-        tokens += (g.sum?.responseTokens ?? 0) + (g.sum?.promptTokens ?? 0);
+        tokens += (g.sum?.tokensIn ?? 0) + (g.sum?.tokensOut ?? 0);
         cost += g.sum?.cost ?? 0;
       }
     }

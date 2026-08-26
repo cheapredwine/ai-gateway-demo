@@ -86,6 +86,20 @@ describe("AI Gateway Demo", () => {
       const text = await res.text();
       expect(text).toContain("onGateway");
     });
+
+    it("HTML includes session ID input and newSessionId function", async () => {
+      const res = await fetchApp(new Request("http://localhost/"));
+      const text = await res.text();
+      expect(text).toContain('id="sessionId"');
+      expect(text).toContain("newSessionId()");
+      expect(text).toContain("generateSessionId()");
+    });
+
+    it("HTML includes session_id in buildMetadata", async () => {
+      const res = await fetchApp(new Request("http://localhost/"));
+      const text = await res.text();
+      expect(text).toContain("session_id");
+    });
   });
 
   // ─── Custom Costs ────────────────────────────────────────────────────────
@@ -133,6 +147,48 @@ describe("AI Gateway Demo", () => {
       const getRes = await fetchApp(new Request("http://localhost/demo/api/costs"));
       const getData = (await getRes.json()) as { costs: Record<string, number> };
       expect(getData.costs).toEqual({ per_token_in: 0.000003, per_token_out: 0.000004 });
+    });
+
+    it("overwrites high costs with low costs on re-save", async () => {
+      // Save high costs first
+      await fetchApp(new Request("http://localhost/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: 0.01, per_token_out: 0.05 }),
+      }));
+
+      let getRes = await fetchApp(new Request("http://localhost/api/costs"));
+      let getData = (await getRes.json()) as { costs: Record<string, number> };
+      expect(getData.costs).toEqual({ per_token_in: 0.01, per_token_out: 0.05 });
+
+      // Overwrite with low costs
+      await fetchApp(new Request("http://localhost/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
+      }));
+
+      getRes = await fetchApp(new Request("http://localhost/api/costs"));
+      getData = (await getRes.json()) as { costs: Record<string, number> };
+      expect(getData.costs).toEqual({ per_token_in: 0.000001, per_token_out: 0.000002 });
+    });
+
+    it("HTML includes setPreset calling saveCosts", async () => {
+      const res = await fetchApp(new Request("http://localhost/"));
+      const text = await res.text();
+      expect(text).toContain("setPreset");
+      // setPreset should call saveCosts() to persist to KV
+      const presetMatch = text.match(/function setPreset\([^)]*\)\s*\{[^}]*\}/);
+      expect(presetMatch).toBeTruthy();
+      expect(presetMatch![0]).toContain("saveCosts()");
+    });
+
+    it("HTML does not double-prefix cost with $", async () => {
+      const res = await fetchApp(new Request("http://localhost/"));
+      const text = await res.text();
+      // Client should use data.cost directly, not "$" + data.cost
+      expect(text).not.toContain('"$" + data.cost');
+      expect(text).toContain("data.cost ||");
     });
   });
 
@@ -243,6 +299,30 @@ describe("AI Gateway Demo", () => {
       expect(callArgs[1].headers["cf-aig-cache-ttl"]).toBe("300");
       expect(callArgs[1].headers["cf-aig-cache-key"]).toBe("test-key");
       expect(callArgs[1].headers["cf-aig-metadata"]).toBe('{"team":"demo"}');
+    });
+
+    it("passes session_id in cf-aig-metadata to upstream", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(mockRes({
+        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        choices: [{ message: { content: "Hi" } }],
+      }));
+      globalThis.fetch = mockFetch;
+
+      await fetchApp(new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          prompt: "Hello",
+          metadata: { session_id: "sess-abc123", team: "demo" },
+        }),
+      }));
+
+      const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
+      const meta = JSON.parse(callArgs[1].headers["cf-aig-metadata"]);
+      expect(meta.session_id).toBe("sess-abc123");
+      expect(meta.team).toBe("demo");
     });
 
     it("skips cache when skip flag is set", async () => {
@@ -412,6 +492,153 @@ describe("AI Gateway Demo", () => {
     it("GET /demo/api/stats returns error without valid API token", async () => {
       const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
       expect([200, 500]).toContain(res.status);
+    });
+
+    it("returns aggregated requests, tokens, and cost from GraphQL", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({
+            result: {
+              id: "demo-gateway",
+              cache_ttl: 0,
+              rate_limiting_limit: 50,
+              rate_limiting_interval: 60,
+            },
+            success: true,
+          }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: {
+              viewer: {
+                accounts: [{
+                  aiGatewayRequestsAdaptiveGroups: [
+                    {
+                      count: 5,
+                      sum: { tokensIn: 220, tokensOut: 217, cost: 13.05 },
+                      dimensions: { model: "@cf/meta/llama-3.1-8b-instruct-fast", gateway: "demo-gateway" },
+                    },
+                    {
+                      count: 11,
+                      sum: { tokensIn: 3397, tokensOut: 33, cost: 0.0016 },
+                      dimensions: { model: "@cf/meta/llama-guard-3-8b", gateway: "demo-gateway" },
+                    },
+                  ],
+                }],
+              },
+            },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; requests: number; tokens: number; cost: string };
+      expect(data.ok).toBe(true);
+      expect(data.requests).toBe(16);
+      expect(data.tokens).toBe(3867);
+      expect(data.cost).toBe("$13.0516");
+    });
+
+    it("uses correct GraphQL field names (tokensIn/tokensOut, not responseTokens/promptTokens)", async () => {
+      let graphqlBody = "";
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          graphqlBody = opts.body;
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      await fetchApp(new Request("http://localhost/api/stats"));
+
+      const parsed = JSON.parse(graphqlBody);
+      expect(parsed.query).toContain("tokensIn");
+      expect(parsed.query).toContain("tokensOut");
+      expect(parsed.query).not.toContain("responseTokens");
+      expect(parsed.query).not.toContain("promptTokens");
+    });
+
+    it("returns dashes when GraphQL has no data", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; requests: string; tokens: string; cost: string };
+      expect(data.ok).toBe(true);
+      expect(data.requests).toBe("-");
+      expect(data.tokens).toBe("-");
+      expect(data.cost).toBe("-");
+    });
+
+    it("returns gateway config fields (cacheTTL, rlLimit, rlInterval)", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({
+            result: {
+              id: "demo-gateway",
+              cache_ttl: 300,
+              rate_limiting_limit: 100,
+              rate_limiting_interval: 60,
+            },
+            success: true,
+          }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const data = (await res.json()) as { cacheTTL: number; rlLimit: number; rlInterval: number };
+      expect(data.cacheTTL).toBe(300);
+      expect(data.rlLimit).toBe(100);
+      expect(data.rlInterval).toBe(60);
+    });
+
+    it("/demo/api/stats returns same data", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: { cache_ttl: 0 }, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{
+              aiGatewayRequestsAdaptiveGroups: [
+                { count: 3, sum: { tokensIn: 100, tokensOut: 50, cost: 1.5 }, dimensions: {} },
+              ],
+            }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; requests: number; tokens: number; cost: string };
+      expect(data.ok).toBe(true);
+      expect(data.requests).toBe(3);
+      expect(data.tokens).toBe(150);
+      expect(data.cost).toBe("$1.5000");
     });
   });
 

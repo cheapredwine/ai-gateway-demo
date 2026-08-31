@@ -166,7 +166,7 @@ Tag requests with key-value pairs via `cf-aig-metadata`. Metadata appears in AI 
 
 Gateway-level budget enforcement. When cumulative estimated spend hits the budget, AI Gateway returns **HTTP 429**.
 
-### Identity-Aware Gateway (Beta)
+### Identity-Aware Gateway
 
 Put a custom domain in front of AI Gateway and protect it with **Cloudflare Access**:
 1. Add a [custom domain](https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/) to your gateway

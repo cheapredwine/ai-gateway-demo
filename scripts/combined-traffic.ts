@@ -1,6 +1,18 @@
 import { spawn } from "child_process";
-import { readFileSync } from "fs";
-import { resolve } from "path";
+import {
+  MODELS,
+  PROMPTS,
+  TEAMS,
+  SOURCES,
+  AgentCreds,
+  loadEnv,
+  discoverAgents,
+  randomChoice,
+  randomFloat,
+  buildCacheHeaders,
+  buildMetadata,
+  buildCustomCost,
+} from "./lib/traffic-utils";
 
 /**
  * Combined Traffic Orchestrator
@@ -31,83 +43,6 @@ import { resolve } from "path";
 
 const GATEWAY_URL = "https://ai-gw.jsherron.com/compat/chat/completions";
 
-const MODELS = [
-  "@cf/meta/llama-3.1-8b-instruct-fast",
-  "@cf/meta/llama-3.2-3b-instruct",
-  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-  "@cf/qwen/qwen3-30b-a3b-fp8",
-  "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
-  "@cf/openai/gpt-oss-20b",
-  "@cf/moonshotai/kimi-k2.6",
-  "@cf/google/gemma-4-26b-a4b-it",
-];
-
-const PROMPTS = [
-  "Explain Cloudflare Workers in one sentence.",
-  "What is edge computing and why does it matter?",
-  "Summarize the benefits of serverless architecture.",
-  "How does a CDN improve website performance?",
-  "Write a haiku about artificial intelligence.",
-  "List three types of machine learning with brief descriptions.",
-  "What is the capital of France and what is it known for?",
-  "Describe the water cycle in two sentences.",
-  "Why is caching important for web applications?",
-  "What does API stand for and give an example.",
-  "Explain recursion to a five-year-old.",
-  "What are the differences between SQL and NoSQL databases?",
-  "How do load balancers work?",
-  "What is the difference between TCP and UDP?",
-  "Describe the concept of zero trust security.",
-];
-
-const TEAMS = ["engineering", "product", "sales", "support", "research", "ops"];
-const SOURCES = ["web-app", "mobile-app", "slack-bot", "api-client", "cron-job", "webhook"];
-
-interface AgentCreds {
-  name: string;
-  id: string;
-  secret: string;
-}
-
-function loadEnv(path: string) {
-  try {
-    const lines = readFileSync(path, "utf-8").split("\n");
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const idx = trimmed.indexOf("=");
-      if (idx === -1) continue;
-      const key = trimmed.slice(0, idx).trim();
-      const value = trimmed.slice(idx + 1).trim();
-      process.env[key] = value;
-    }
-  } catch {
-    // no .dev.vars
-  }
-}
-
-function discoverAgents(): AgentCreds[] {
-  const agents: AgentCreds[] = [];
-  for (const key of Object.keys(process.env)) {
-    const m = key.match(/^AGENT_(.+)_ID$/);
-    if (!m) continue;
-    const name = m[1];
-    const secretKey = `AGENT_${name}_SECRET`;
-    const id = process.env[key];
-    const secret = process.env[secretKey];
-    if (id && secret) agents.push({ name, id, secret });
-  }
-  return agents;
-}
-
-function randomChoice<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function randomFloat(min: number, max: number): number {
-  return min + Math.random() * (max - min);
-}
-
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -125,23 +60,17 @@ async function runAgent(agent: AgentCreds, count: number, delay: number, results
     const sessionId = `sess-${agent.name.toLowerCase()}-${Math.random().toString(36).slice(2, 8)}`;
     const team = Math.random() < 0.7 ? favoredTeam : randomChoice(TEAMS);
     const source = randomChoice(SOURCES);
-    const costIn = randomFloat(0.000001, 0.000010);
-    const costOut = randomFloat(0.000002, 0.000020);
+    const cost = buildCustomCost(randomFloat(0.000001, 0.000010), randomFloat(0.000002, 0.000020));
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "Authorization": `Bearer ${token}`,
       "CF-Access-Client-Id": agent.id,
       "CF-Access-Client-Secret": agent.secret,
-      "cf-aig-custom-cost": JSON.stringify({ per_token_in: costIn, per_token_out: costOut }),
-      "cf-aig-metadata": JSON.stringify({ session_id: sessionId, agent: agent.name, team, source }),
+      "cf-aig-custom-cost": JSON.stringify(cost),
+      "cf-aig-metadata": JSON.stringify(buildMetadata(sessionId, agent.name, team, source)),
+      ...buildCacheHeaders(),
     };
-
-    if (Math.random() > 0.25) {
-      headers["cf-aig-cache-ttl"] = String(Math.floor(randomFloat(60, 600)));
-    } else {
-      headers["cf-aig-skip-cache"] = "true";
-    }
 
     try {
       const res = await fetch(GATEWAY_URL, {
@@ -190,20 +119,18 @@ async function runHumanTraffic(count: number, delay: number, results: { ok: numb
     const sessionId = `sess-human-${Math.random().toString(36).slice(2, 8)}`;
     const team = Math.random() < 0.7 ? favoredTeam : randomChoice(TEAMS);
     const source = randomChoice(SOURCES);
-    const costIn = randomFloat(0.000001, 0.000010);
-    const costOut = randomFloat(0.000002, 0.000020);
-
-    const cacheHdr = Math.random() > 0.25
-      ? `-H "cf-aig-cache-ttl: ${Math.floor(randomFloat(60, 600))}"`
-      : `-H "cf-aig-skip-cache: true"`;
+    const cost = buildCustomCost(randomFloat(0.000001, 0.000010), randomFloat(0.000002, 0.000020));
+    const cacheHdr = Object.entries(buildCacheHeaders())
+      .map(([k, v]) => `-H "${k}: ${v}"`)
+      .join(" ");
 
     const cmd = `cloudflared access curl "${GATEWAY_URL}" \
       -X POST \
       -s -w "\\nHTTP_CODE:%{http_code}" -o - \
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${token}" \
-      -H "cf-aig-custom-cost: {\\"per_token_in\\":${costIn},\\"per_token_out\\":${costOut}}" \
-      -H "cf-aig-metadata: {\\"session_id\\":\\"${sessionId}\\",\\"team\\":\\"${team}\\",\\"source\\":\\"${source}\\",\\"agent\\":\\"human-cloudflared\\"}" \
+      -H "cf-aig-custom-cost: ${JSON.stringify(cost).replace(/"/g, '\\"')}" \
+      -H "cf-aig-metadata: ${JSON.stringify(buildMetadata(sessionId, "human-cloudflared", team, source)).replace(/"/g, '\\"')}" \
       ${cacheHdr} \
       -d '{"model":"workers-ai/${model}","messages":[{"role":"user","content":"${prompt}"}]}' 2>/dev/null`;
 

@@ -204,6 +204,99 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 
 ---
 
+## Part 8: Automated Traffic Generation
+
+**Goal:** Generate realistic traffic at scale for dashboard demos and load testing.
+
+### 8.1 Browser console snippet (human identity)
+
+Open the demo page in a logged-in browser and paste into the console:
+
+```bash
+# On https://ai-gw.jsherron.com/demo
+# Paste contents of scripts/traffic-snippet.js
+```
+
+Prompts for request count and delay. Fires randomized requests with varied models, costs, cache settings, and metadata — all carrying `cf.user_id`.
+
+### 8.2 Bash + cloudflared (human identity)
+
+Requires `cloudflared` logged in (`cloudflared access login https://ai-gw.jsherron.com`):
+
+```bash
+# 20 requests, 800ms delay
+./scripts/traffic.sh 20 800
+
+# 50 requests, 500ms delay
+./scripts/traffic.sh 50 500
+```
+
+Uses `cloudflared access curl` so Access injects `cf.user_id`. Randomizes models, prompts, costs, cache, and metadata.
+
+### 8.3 Playwright browser automation (human identity)
+
+Opens a real browser, handles Access login once, saves auth state, then fires requests via `fetch` in page context:
+
+```bash
+# 30 requests, 600ms delay
+npx tsx scripts/human-identity-traffic.ts 30 600
+```
+
+First run opens browser for manual login and saves cookies to `scripts/auth.json` (gitignored). Subsequent runs reuse saved state.
+
+### 8.4 Multi-agent bash (service identity)
+
+Discovers `AGENT_*_ID` / `AGENT_*_SECRET` pairs from `.dev.vars` and runs each agent in parallel:
+
+```bash
+# Add to .dev.vars:
+# AGENT_ALPHA_ID=xxx.access
+# AGENT_ALPHA_SECRET=yyy
+# AGENT_BETA_ID=xxx.access
+# AGENT_BETA_SECRET=yyy
+
+./scripts/multi-agent-traffic.sh 15 600
+```
+
+Each agent gets a favored model and team (consistent identity). Uses `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers. Logs show `cf.common_name`.
+
+### 8.5 Combined orchestrator (both identities)
+
+Runs service-token agents AND human-identity traffic simultaneously:
+
+```bash
+# Default: all agents + 20 human requests
+npx tsx scripts/combined-traffic.ts
+
+# Skip human, run only agents
+SKIP_HUMAN=true npx tsx scripts/combined-traffic.ts
+
+# Skip agents, run only human
+SKIP_AGENTS=true npx tsx scripts/combined-traffic.ts
+
+# Custom counts
+AGENT_REQS=30 HUMAN_REQS=30 npx tsx scripts/combined-traffic.ts
+```
+
+Environment variables:
+- `AGENT_COUNT` — number of agents (auto-discovered from env)
+- `AGENT_REQS` — requests per agent (default 15)
+- `AGENT_DELAY` — delay between agent requests in ms (default 600)
+- `HUMAN_REQS` — human requests (default 20)
+- `HUMAN_DELAY` — human request delay in ms (default 800)
+
+### 8.6 When to use which script
+
+| Script | Identity | Scale | Setup |
+|---|---|---|---|
+| `traffic-snippet.js` | Human | Ad-hoc, small | Browser console only |
+| `traffic.sh` | Human | Medium | `cloudflared` installed |
+| `human-identity-traffic.ts` | Human | Medium-large | Playwright + first-run login |
+| `multi-agent-traffic.sh` | Service | Medium (parallel) | `AGENT_*` creds in `.dev.vars` |
+| `combined-traffic.ts` | Both | Large (parallel) | All of the above |
+
+---
+
 ## Part 7: Custom Metadata
 
 **Goal:** Show request tagging for log filtering.

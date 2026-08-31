@@ -51,6 +51,11 @@ Two demo modes, one Worker:
 | `wrangler.toml.example` | Template with placeholder values for new users. |
 | `scripts/create-gateway.ts` | CLI script to create the AI Gateway via Cloudflare API if missing. |
 | `scripts/setup-limits.ts` | CLI script to create a spend limit rule on the gateway. |
+| `scripts/combined-traffic.ts` | Orchestrates both service-token agents and human-identity traffic simultaneously. |
+| `scripts/human-identity-traffic.ts` | Playwright browser script that fires requests with real Access session (cf.user_id). |
+| `scripts/multi-agent-traffic.sh` | Parallel bash traffic generator using multiple AGENT_* service token pairs. |
+| `scripts/traffic.sh` | Simple bash script using cloudflared access curl for human-identity traffic. |
+| `scripts/traffic-snippet.js` | Browser console snippet for ad-hoc human-identity traffic on the demo page. |
 
 ## Environment / Secrets
 
@@ -194,6 +199,7 @@ If you need local-only overrides without touching Cloudflare secrets, create `.d
 - **Storage**: Cloudflare KV
 - **AI**: Cloudflare Workers AI via AI Gateway
 - **Testing**: Vitest (with manual KV mocking, runs in Node)
+- **Traffic Generation**: Playwright (browser automation), bash/curl, cloudflared
 
 ## Testing
 

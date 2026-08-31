@@ -213,6 +213,22 @@ A red **Access Logout** button appears in gateway mode. It fetches `/cdn-cgi/acc
 
 ---
 
+## Traffic Generation Scripts
+
+Several scripts generate realistic traffic for dashboard demos and load testing:
+
+| Script | Identity | Method | Use Case |
+|---|---|---|---|
+| `scripts/traffic.sh` | Human (`cf.user_id`) | `cloudflared access curl` | Quick bash-based human identity traffic |
+| `scripts/human-identity-traffic.ts` | Human (`cf.user_id`) | Playwright browser automation | Real browser session with saved auth state |
+| `scripts/multi-agent-traffic.sh` | Service (`cf.common_name`) | Parallel curl with `CF-Access-Client-Id` | Multiple service-token agents concurrently |
+| `scripts/combined-traffic.ts` | Both | TypeScript orchestrator | Simultaneous human + service traffic |
+| `scripts/traffic-snippet.js` | Human (`cf.user_id`) | Browser console | Ad-hoc traffic from the demo page |
+
+All scripts randomize models, prompts, custom costs, cache settings, and metadata to produce realistic log diversity.
+
+---
+
 ## Token Permissions
 
 | Permission | Scope | Why |
@@ -264,8 +280,13 @@ ai-gateway-demo/
 │   ├── index.ts          # Hono Worker (UI + API)
 │   └── index.test.ts     # Vitest tests
 ├── scripts/
-│   ├── create-gateway.ts # CLI: create gateway
-│   └── setup-limits.ts   # CLI: create spend limit rule
+│   ├── create-gateway.ts        # CLI: create gateway
+│   ├── setup-limits.ts          # CLI: create spend limit rule
+│   ├── combined-traffic.ts      # Orchestrate service + human traffic
+│   ├── human-identity-traffic.ts # Playwright browser traffic (cf.user_id)
+│   ├── multi-agent-traffic.sh   # Parallel bash agents (cf.common_name)
+│   ├── traffic.sh               # Simple cloudflared curl traffic
+│   └── traffic-snippet.js       # Browser console ad-hoc traffic
 ├── wrangler.toml         # Your local config (gitignored!)
 ├── wrangler.toml.example # Template for new users
 ├── tsconfig.json

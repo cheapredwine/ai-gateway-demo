@@ -8,7 +8,7 @@ Single Cloudflare Worker that serves a web UI for demonstrating AI Gateway featu
 - **Rate Limiting**: Request-based limits (fixed/sliding window) via gateway config
 - **Caching**: Per-request cache TTL and custom cache keys via `cf-aig-cache-ttl`
 - **Custom Metadata**: Tag requests with `cf-aig-metadata` for log filtering
-- **Identity-Aware Gateway** (Beta): Cloudflare Access + custom domain auto-injects `cf.user_id`
+- **Identity-Aware Gateway**: Cloudflare Access + custom domain auto-injects `cf.user_id`
 - **Workers AI**: All traffic routes to Cloudflare Workers AI models via the REST API
 
 ## Architecture
@@ -142,7 +142,7 @@ Body:
   { budget: 1.0, window: "1d", dimensions: {} }
 ```
 
-### Identity-Aware Gateway (Beta)
+### Identity-Aware Gateway
 1. Add a [custom domain](https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/) to the AI Gateway
 2. Create a [Cloudflare Access application](https://developers.cloudflare.com/cloudflare-one/policies/access/) for that domain
 3. Create a service token and add a Service Auth policy at #1

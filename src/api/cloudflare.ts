@@ -1,0 +1,24 @@
+type CloudflareEnv = {
+  CLOUDFLARE_API_TOKEN: string;
+};
+
+export function cfApiUrl(env: CloudflareEnv, path: string): string {
+  return `https://api.cloudflare.com/client/v4${path}`;
+}
+
+const UPSTREAM_TIMEOUT_MS = 15000;
+
+export async function cfApiFetch(
+  env: CloudflareEnv,
+  path: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  const headers = new Headers(init.headers);
+  headers.set("Authorization", `Bearer ${env.CLOUDFLARE_API_TOKEN}`);
+  if (init.body) headers.set("Content-Type", "application/json");
+  return fetch(cfApiUrl(env, path), {
+    ...init,
+    headers,
+    signal: init.signal ?? AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+  });
+}

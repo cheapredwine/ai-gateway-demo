@@ -208,8 +208,7 @@ A red **Access Logout** button appears in gateway mode. It fetches `/cdn-cgi/acc
 | `POST` | `/api/costs` | Save custom costs to KV |
 | `POST` | `/api/settings` | Update gateway rate limits + spend limits |
 | `GET` | `/api/stats` | Fetch gateway stats from Cloudflare API |
-| `GET` | `/api/bootstrap` | Ensure gateway exists |
-| `GET` | `/api/debug-access` | Debug Access service token auth |
+| `GET` | `/api/bootstrap` | Ensure gateway exists (requires `Authorization: Bearer CLOUDFLARE_API_TOKEN`) |
 
 ---
 

@@ -46,7 +46,8 @@ Two demo modes, one Worker:
 
 | File | Purpose |
 |---|---|
-| `src/index.ts` | Hono Worker. Serves HTML UI at `/` and `/demo`. Handles API routes under both `/api/*` and `/demo/api/*`. Chat calls custom domain `/compat/chat/completions`. Management calls use gateway ID via Cloudflare REST API. |
+| `src/index.ts` | Hono Worker. Mounts routes under `/` and `/demo`. Chat calls custom domain `/compat/chat/completions`. Management calls use gateway ID via Cloudflare REST API (`src/api/cloudflare.ts`). |
+| `src/ui.ts` | HTML UI template (`renderHtml`). All client-side JS/CSS lives here. |
 | `wrangler.toml` | Your local Worker config (gitignored). Copy from `wrangler.toml.example`. |
 | `wrangler.toml.example` | Template with placeholder values for new users. |
 | `scripts/create-gateway.ts` | CLI script to create the AI Gateway via Cloudflare API if missing. |
@@ -174,10 +175,10 @@ Body:
 ## Common Tasks
 
 ### Add a new model to the dropdown
-Edit the `<select id="model">` in `src/index.ts` HTML string. Add `<option value="@cf/...">Display Name</option>` inside the appropriate `<optgroup>`.
+Edit the `<select id="model">` in `src/ui.ts` HTML string. Add `<option value="@cf/...">Display Name</option>` inside the appropriate `<optgroup>`.
 
 ### Change default gateway name
-Update `GATEWAY_NAME` in `wrangler.toml` and `src/index.ts` subtitle text.
+Update `GATEWAY_NAME` in `wrangler.toml` and `src/ui.ts` subtitle text.
 
 ### Reset gateway settings
 POST to `/api/settings` with rate limit and spend limit `enabled: false`, or use the web UI toggles.
@@ -204,10 +205,11 @@ If you need local-only overrides without touching Cloudflare secrets, create `.d
 ## Testing
 
 ```bash
+npm run lint   # tsc --noEmit
 npm test
 ```
 
-Tests use Vitest with a mock KV implementation and mocked `fetch` for upstream API calls. No Workers runtime or live Cloudflare API needed for unit tests.
+Tests use Vitest with a mock KV implementation and mocked `fetch` for upstream API calls. No Workers runtime or live Cloudflare API needed for unit tests. CI (`.github/workflows/ci.yml`) runs lint + tests on push/PR.
 
 Key test coverage:
 - HTML UI rendering at `/`, `/demo`, `/demo/` with env vars
@@ -221,7 +223,7 @@ Key test coverage:
 - Custom cost header forwarding
 - KV fallback for custom costs
 - 429 rate-limit response handling
-- Debug access endpoint
+- Bootstrap endpoint requires `Authorization: Bearer CLOUDFLARE_API_TOKEN` (401 otherwise)
 - All API routes tested under both `/api` and `/demo/api` prefixes
 
 ## Deployment

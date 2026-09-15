@@ -468,7 +468,7 @@ export function renderHtml(opts: UiOptions): string {
         return m;
       };
 
-      for (let i = 0; i < count; i++) {
+      const sendOne = async (i) => {
         log(\`Sending #\${i+1} to \${model} [session: \${sessionId}]...\`, "info");
         try {
           if (onGateway) {
@@ -550,7 +550,10 @@ export function renderHtml(opts: UiOptions): string {
         } catch (e) {
           log("Network error: " + e.message, "error");
         }
-      }
+      };
+
+      await Promise.all(Array.from({ length: count }, (_, i) => sendOne(i)));
+      log(\`Done — \${count} request\${count === 1 ? "" : "s"} complete.\`, "info");
     }
 
     function sendBurst() { sendChat(5); }

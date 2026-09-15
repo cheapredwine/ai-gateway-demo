@@ -137,6 +137,13 @@ describe("AI Gateway Demo", () => {
       expect(text).toContain("crypto.getRandomValues");
       expect(text).not.toContain("Math.random()");
     });
+
+    it("sendChat fires bursts in parallel (Promise.all), not sequential loop", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo"));
+      const text = await res.text();
+      expect(text).not.toContain("for (let i = 0; i < count; i++)");
+      expect(text).toContain("Promise.all");
+    });
   });
 
   // ─── Custom Costs ────────────────────────────────────────────────────────

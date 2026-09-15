@@ -6,6 +6,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "test": "vitest run",
+    "lint": "tsc --noEmit",
     "create-gateway": "tsx scripts/create-gateway.ts",
     "setup-limits": "tsx scripts/setup-limits.ts"
   },

@@ -100,6 +100,50 @@ describe("AI Gateway Demo", () => {
       const text = await res.text();
       expect(text).toContain("session_id");
     });
+
+    it("HTML logout URL is derived from GATEWAY_NAME, not hardcoded", async () => {
+      for (const path of ["/", "/demo"]) {
+        const res = await fetchApp(new Request(`http://localhost${path}`));
+        const text = await res.text();
+        expect(text).toContain("https://demo-gateway/cdn-cgi/access/logout");
+        expect(text).not.toContain("ai-gw.jsherron.com");
+      }
+    });
+
+    it("GET /demo/logout redirects to GATEWAY_NAME access logout", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo/logout"));
+      expect(res.status).toBe(302);
+      expect(res.headers.get("location")).toBe("https://demo-gateway/cdn-cgi/access/logout");
+    });
+
+    it("does not set wildcard CORS headers (same-origin app)", async () => {
+      const res = await fetchApp(new Request("http://localhost/"));
+      expect(res.headers.get("access-control-allow-origin")).toBeNull();
+      const apiRes = await fetchApp(new Request("http://localhost/api/costs"));
+      expect(apiRes.headers.get("access-control-allow-origin")).toBeNull();
+    });
+
+    it("client log() renders messages as text, not innerHTML (XSS-safe)", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo"));
+      const text = await res.text();
+      expect(text).not.toContain("el.innerHTML +=");
+      expect(text).not.toContain('el.innerHTML = `[${time}');
+      expect(text).toContain("textContent");
+    });
+
+    it("generateSessionId uses crypto.getRandomValues, not Math.random", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo"));
+      const text = await res.text();
+      expect(text).toContain("crypto.getRandomValues");
+      expect(text).not.toContain("Math.random()");
+    });
+
+    it("sendChat fires bursts in parallel (Promise.all), not sequential loop", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo"));
+      const text = await res.text();
+      expect(text).not.toContain("for (let i = 0; i < count; i++)");
+      expect(text).toContain("Promise.all");
+    });
   });
 
   // ─── Custom Costs ────────────────────────────────────────────────────────
@@ -189,6 +233,70 @@ describe("AI Gateway Demo", () => {
       // Client should use data.cost directly, not "$" + data.cost
       expect(text).not.toContain('"$" + data.cost');
       expect(text).toContain("data.cost ||");
+    });
+
+    it("POST /api/costs rejects negative numbers", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: -1, per_token_out: 0.000002 }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/costs rejects non-numeric values", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: "free", per_token_out: 0.000002 }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/costs rejects missing fields", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: 0.000001 }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/costs still accepts valid zero", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/costs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ per_token_in: 0, per_token_out: 0 }),
+      }));
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /api/costs tolerates corrupt KV JSON", async () => {
+      kvStore.set("custom_costs", "not-json{{{");
+      const res = await fetchApp(new Request("http://localhost/api/costs"));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; costs: unknown };
+      expect(data.ok).toBe(true);
+      expect(data.costs).toBeNull();
+    });
+
+    it("chat tolerates corrupt KV custom_costs (no custom cost header sent)", async () => {
+      kvStore.set("custom_costs", "not-json{{{");
+      const mockFetch = vi.fn().mockResolvedValue(mockRes({
+        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        choices: [{ message: { content: "Hi" } }],
+      }));
+      globalThis.fetch = mockFetch;
+
+      const res = await fetchApp(new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+      }));
+      expect(res.status).toBe(200);
+      const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
+      expect(callArgs[1].headers["cf-aig-custom-cost"]).toBeUndefined();
     });
   });
 
@@ -325,6 +433,45 @@ describe("AI Gateway Demo", () => {
       expect(meta.team).toBe("demo");
     });
 
+    it("rejects metadata with reserved cf. keys", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          prompt: "Hello",
+          metadata: { "cf.user_id": "spoof" },
+        }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects metadata with more than 5 keys", async () => {
+      const res = await fetchApp(new Request("http://localhost/demo/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          prompt: "Hello",
+          metadata: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 },
+        }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects metadata with object values", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          prompt: "Hello",
+          metadata: { nested: { bad: true } },
+        }),
+      }));
+      expect(res.status).toBe(400);
+    });
+
     it("skips cache when skip flag is set", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
         model: "@cf/meta/llama-3.1-8b-instruct-fast",
@@ -384,6 +531,51 @@ describe("AI Gateway Demo", () => {
       const callArgs = mockFetch.mock.calls[0] as [string, { body: string }];
       const sentBody = JSON.parse(callArgs[1].body);
       expect(sentBody.model).toBe("workers-ai/@cf/meta/llama-3.1-8b-instruct-fast");
+    });
+
+    it("chat upstream fetch carries an AbortSignal timeout", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(mockRes({
+        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+        choices: [{ message: { content: "Hi" } }],
+      }));
+      globalThis.fetch = mockFetch;
+
+      await fetchApp(new Request("http://localhost/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+      }));
+
+      const callArgs = mockFetch.mock.calls[0] as [string, { signal?: AbortSignal }];
+      expect(callArgs[1].signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("Cloudflare API calls carry an AbortSignal timeout", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      await fetchApp(new Request("http://localhost/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
+          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+        }),
+      }));
+
+      const putCall = (globalThis.fetch as any).mock.calls.find(
+        ([, o]: [unknown, any]) => o?.method === "PUT"
+      ) as [string, { signal?: AbortSignal }];
+      expect(putCall[1].signal).toBeInstanceOf(AbortSignal);
     });
   });
 
@@ -478,6 +670,123 @@ describe("AI Gateway Demo", () => {
         }),
       }));
       expect([500, 502]).toContain(res.status);
+    });
+
+    it("reports warnings when spend-limit cleanup fails", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits") && method === "GET") {
+          return Promise.resolve(mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }));
+        }
+        if (url.includes("/spend-limits") && method === "DELETE") {
+          return Promise.resolve(mockRes({ success: false, errors: [{ message: "boom" }] }, { status: 500 }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+        }),
+      }));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; warnings?: string[] };
+      expect(data.ok).toBe(true);
+      expect(data.warnings?.length).toBeGreaterThan(0);
+    });
+
+    it("deletes all existing spend-limit rules in parallel with no warnings on success", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits") && method === "GET") {
+          return Promise.resolve(mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }));
+        }
+        if (url.includes("/spend-limits") && method === "DELETE") {
+          return Promise.resolve(mockRes({ result: { id: "deleted" }, success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+        }),
+      }));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; warnings?: string[] };
+      expect(data.ok).toBe(true);
+      expect(data.warnings ?? []).toHaveLength(0);
+      const deletes = (globalThis.fetch as any).mock.calls.filter(
+        ([, o]: [unknown, any]) => o?.method === "DELETE"
+      );
+      expect(deletes).toHaveLength(2);
+    });
+
+    it("omits rate_limiting_technique when disabling rate limiting", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "sliding" },
+          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+        }),
+      }));
+      expect(res.status).toBe(200);
+      expect(putBody.rate_limiting_limit).toBe(0);
+      expect(putBody.rate_limiting_interval).toBe(0);
+      expect(putBody).not.toHaveProperty("rate_limiting_technique");
+    });
+
+    it("sends rate_limiting_technique when enabling rate limiting", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/demo/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
+          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+        }),
+      }));
+      expect(res.status).toBe(200);
+      expect(putBody.rate_limiting_limit).toBe(100);
+      expect(putBody.rate_limiting_technique).toBe("fixed");
     });
   });
 
@@ -615,6 +924,85 @@ describe("AI Gateway Demo", () => {
       expect(data.rlInterval).toBe(60);
     });
 
+    it("spendLimit is On when spend-limit rules exist (from rules API, not config)", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [{ id: "rule-1", budget: 1 }], success: true }));
+        }
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const data = (await res.json()) as { ok: boolean; spendLimit: string };
+      expect(data.spendLimit).toBe("On");
+    });
+
+    it("spendLimit is Off when no spend-limit rules exist", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      const data = (await res.json()) as { ok: boolean; spendLimit: string };
+      expect(data.spendLimit).toBe("Off");
+    });
+
+    it("does not report rateLimited from nonexistent gateway config field", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/graphql")) {
+          return Promise.resolve(mockRes({
+            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+          }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const data = (await res.json()) as { ok: boolean; rateLimited?: unknown };
+      expect(data.ok).toBe(true);
+      expect(data).not.toHaveProperty("rateLimited");
+    });
+
+    it("GET /api/stats returns 500 when upstream fetch rejects", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      expect(res.status).toBe(500);
+      const data = (await res.json()) as { ok: boolean; error: string };
+      expect(data.ok).toBe(false);
+      expect(data.error).toContain("upstream down");
+    });
+
+    it("GET /demo/api/stats returns 500 when upstream fetch rejects", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
+      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      expect(res.status).toBe(500);
+    });
+
     it("/demo/api/stats returns same data", async () => {
       globalThis.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/ai-gateway/gateways/")) {
@@ -642,47 +1030,77 @@ describe("AI Gateway Demo", () => {
     });
   });
 
-  // ─── Bootstrap ────────────────────────────────────────────────────────────
+  // ─── Bootstrap (admin-gated) ──────────────────────────────────────────────
 
-  describe("Bootstrap", () => {
-    it("GET /api/bootstrap returns error without valid API token", async () => {
+  describe("Bootstrap (admin-gated)", () => {
+    it("GET /api/bootstrap returns 401 without auth", async () => {
       const res = await fetchApp(new Request("http://localhost/api/bootstrap"));
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(401);
     });
 
-    it("GET /demo/api/bootstrap returns error without valid API token", async () => {
+    it("GET /demo/api/bootstrap returns 500 when upstream fetch rejects", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
+      const res = await fetchApp(new Request("http://localhost/demo/api/bootstrap", {
+        headers: { "Authorization": "Bearer fake-token" },
+      }));
+      expect(res.status).toBe(500);
+      const data = (await res.json()) as { ok: boolean; error: string };
+      expect(data.ok).toBe(false);
+      expect(data.error).toContain("upstream down");
+    });
+
+    it("GET /demo/api/bootstrap returns 401 without auth", async () => {
       const res = await fetchApp(new Request("http://localhost/demo/api/bootstrap"));
-      expect([200, 500]).toContain(res.status);
+      expect(res.status).toBe(401);
+    });
+
+    it("GET /api/bootstrap returns 401 with wrong token", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/bootstrap", {
+        headers: { "Authorization": "Bearer wrong-token" },
+      }));
+      expect(res.status).toBe(401);
+    });
+
+    it("GET /api/bootstrap returns gateway with correct token", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+      const res = await fetchApp(new Request("http://localhost/api/bootstrap", {
+        headers: { "Authorization": "Bearer fake-token" },
+      }));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; created: boolean };
+      expect(data.ok).toBe(true);
+      expect(data.created).toBe(false);
+    });
+
+    it("GET /demo/api/bootstrap creates gateway with correct token when missing", async () => {
+      const mockFetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        if (opts?.method === "POST") {
+          return Promise.resolve(mockRes({ result: { id: "demo-gateway" }, success: true }));
+        }
+        return Promise.resolve({ ok: false, status: 404, text: async () => "not found", json: async () => ({}) } as unknown as Response);
+      });
+      globalThis.fetch = mockFetch;
+
+      const res = await fetchApp(new Request("http://localhost/demo/api/bootstrap", {
+        headers: { "Authorization": "Bearer fake-token" },
+      }));
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; created: boolean };
+      expect(data.created).toBe(true);
     });
   });
 
-  // ─── Debug Access ─────────────────────────────────────────────────────────
+  // ─── Debug Access (removed) ───────────────────────────────────────────────
 
-  describe("Debug Access", () => {
-    it("GET /api/debug-access returns status and header info", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes(
-        { id: "test-id", choices: [] },
-        { headers: { "cf-aig-cache-status": "MISS" } }
-      ));
-
+  describe("Debug Access (removed)", () => {
+    it("GET /api/debug-access returns 404", async () => {
       const res = await fetchApp(new Request("http://localhost/api/debug-access"));
-      expect(res.status).toBe(200);
-      const data = (await res.json()) as { status: number; sentHeaders: Record<string, string> };
-      expect(data.status).toBe(200);
-      expect(data.sentHeaders["CF-Access-Client-Id"]).toBe("set");
-      expect(data.sentHeaders["CF-Access-Client-Secret"]).toBe("set");
+      expect(res.status).toBe(404);
     });
 
-    it("GET /demo/api/debug-access returns status and header info", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes(
-        { id: "test-id", choices: [] },
-        { headers: { "cf-aig-cache-status": "MISS" } }
-      ));
-
+    it("GET /demo/api/debug-access returns 404", async () => {
       const res = await fetchApp(new Request("http://localhost/demo/api/debug-access"));
-      expect(res.status).toBe(200);
-      const data = (await res.json()) as { status: number; sentHeaders: Record<string, string> };
-      expect(data.sentHeaders["CF-Access-Client-Id"]).toBe("set");
+      expect(res.status).toBe(404);
     });
   });
 });

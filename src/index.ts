@@ -140,11 +140,12 @@ const chatHandler = async (c: AppContext) => {
   }
 
   try {
+    // 30s — LLM inference can be slow (large models, cold starts); 15s kills valid requests
     const res = await fetch(upstreamUrl, {
       method: "POST",
       headers: upstreamHeaders,
       body: JSON.stringify(upstreamBody),
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(30000),
     });
 
     const cacheStatus = res.headers.get("cf-aig-cache-status") || undefined;

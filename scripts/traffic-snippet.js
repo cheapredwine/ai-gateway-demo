@@ -10,7 +10,7 @@
     "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b",
     "@cf/openai/gpt-oss-20b",
     "@cf/moonshotai/kimi-k2.6",
-    "@cf/google/gemma-4-26b-a4b-it"
+    "@cf/google/gemma-4-26b-a4b-it",
   ];
 
   const prompts = [
@@ -23,7 +23,7 @@
     "What is the capital of France?",
     "Describe the water cycle briefly.",
     "Why is caching important?",
-    "What does API stand for?"
+    "What does API stand for?",
   ];
 
   function random(arr) {
@@ -42,7 +42,11 @@
       "Content-Type": "application/json",
       "cf-aig-custom-cost": JSON.stringify({ per_token_in: costIn, per_token_out: costOut }),
       "cf-aig-cache-ttl": String(cacheTTL),
-      "cf-aig-metadata": JSON.stringify({ session_id: sessionId, team: "demo", source: "console-traffic" })
+      "cf-aig-metadata": JSON.stringify({
+        session_id: sessionId,
+        team: "demo",
+        source: "console-traffic",
+      }),
     };
 
     try {
@@ -51,12 +55,14 @@
         headers,
         body: JSON.stringify({
           model: "workers-ai/" + model,
-          messages: [{ role: "user", content: prompt }]
-        })
+          messages: [{ role: "user", content: prompt }],
+        }),
       });
       const data = await res.json();
       const tokens = data.usage ? data.usage.total_tokens : "?";
-      console.log(`[${new Date().toLocaleTimeString()}] ${res.status} | ${tokens} tokens | ${model}`);
+      console.log(
+        `[${new Date().toLocaleTimeString()}] ${res.status} | ${tokens} tokens | ${model}`,
+      );
     } catch (e) {
       console.error("Network error:", e.message);
     }
@@ -68,7 +74,7 @@
   console.log(`Firing ${count} requests with ${delay}ms delay...`);
   for (let i = 0; i < count; i++) {
     await fire();
-    if (i < count - 1) await new Promise(r => setTimeout(r, delay));
+    if (i < count - 1) await new Promise((r) => setTimeout(r, delay));
   }
   console.log("Done.");
 })();

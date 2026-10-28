@@ -45,9 +45,7 @@ async function run(count: number, delay: number) {
   })();
 
   const browser = await chromium.launch({ headless: false });
-  const context = await browser.newContext(
-    hasAuth ? { storageState: AUTH_STATE } : {}
-  );
+  const context = await browser.newContext(hasAuth ? { storageState: AUTH_STATE } : {});
   const page = await context.newPage();
 
   await page.goto(GATEWAY_URL);
@@ -55,14 +53,14 @@ async function run(count: number, delay: number) {
   if (!hasAuth) {
     console.log("No saved auth state. Please log in via the browser window.");
     console.log("Waiting for the demo page to load (up to 2 minutes)...");
-    await page.waitForSelector('h1', { timeout: 120000 });
+    await page.waitForSelector("h1", { timeout: 120000 });
     console.log("Page loaded. Saving auth state...");
     await context.storageState({ path: AUTH_STATE });
     console.log("Auth state saved to", AUTH_STATE);
   } else {
-    console.log("Loaded saved auth state.")
+    console.log("Loaded saved auth state.");
     try {
-      await page.waitForSelector('h1', { timeout: 10000 });
+      await page.waitForSelector("h1", { timeout: 10000 });
     } catch {
       console.log("Saved auth may have expired. Delete scripts/auth.json and re-run.");
       await browser.close();
@@ -85,7 +83,7 @@ async function run(count: number, delay: number) {
     const sessionId = `sess-human-${Math.random().toString(36).slice(2, 8)}`;
     const team = Math.random() < 0.7 ? favoredTeam : randomChoice(TEAMS);
     const source = randomChoice(SOURCES);
-    const cost = buildCustomCost(randomFloat(0.000001, 0.000010), randomFloat(0.000002, 0.000020));
+    const cost = buildCustomCost(randomFloat(0.000001, 0.00001), randomFloat(0.000002, 0.00002));
     const cache = buildCacheHeaders();
 
     const headers: Record<string, string> = {
@@ -118,12 +116,14 @@ async function run(count: number, delay: number) {
             model: `workers-ai/${model}`,
             messages: [{ role: "user", content: prompt }],
           },
-        }
+        },
       );
 
       const time = new Date().toLocaleTimeString();
       if (res.status === 200) {
-        console.log(`[${time}] #${i + 1}/${count} OK | ${res.tokens} tokens | cache=${res.cacheStatus} | ${res.model}`);
+        console.log(
+          `[${time}] #${i + 1}/${count} OK | ${res.tokens} tokens | cache=${res.cacheStatus} | ${res.model}`,
+        );
         success++;
       } else if (res.status === 429) {
         console.log(`[${time}] #${i + 1}/${count} BLOCKED (429) | rate limited`);

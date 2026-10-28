@@ -36,14 +36,14 @@ async function main() {
       },
       body: JSON.stringify({ id: GATEWAY_NAME, name: GATEWAY_NAME }),
     });
-    const data = await create.json() as { result?: unknown; errors?: { message: string }[] };
+    const data = (await create.json()) as { result?: unknown; errors?: { message: string }[] };
     if (!create.ok) {
       console.error("Create failed:", JSON.stringify(data, null, 2));
       process.exit(1);
     }
     console.log("Created gateway:", JSON.stringify(data.result, null, 2));
   } else {
-    const data = await check.json() as { result?: unknown };
+    const data = (await check.json()) as { result?: unknown };
     console.log(`Gateway "${GATEWAY_NAME}" already exists.`);
     console.log(JSON.stringify(data.result, null, 2));
   }

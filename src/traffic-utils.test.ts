@@ -102,7 +102,11 @@ describe("traffic-utils", () => {
     const testEnvPath = resolve("test.env");
 
     beforeEach(() => {
-      try { unlinkSync(testEnvPath); } catch { /* ignore */ }
+      try {
+        unlinkSync(testEnvPath);
+      } catch {
+        /* ignore */
+      }
       delete process.env.TEST_LOADENV_KEY;
     });
 
@@ -142,8 +146,8 @@ describe("traffic-utils", () => {
 
       const agents = discoverAgents();
       expect(agents).toHaveLength(2);
-      expect(agents.map(a => a.name)).toContain("ALPHA");
-      expect(agents.map(a => a.name)).toContain("BETA");
+      expect(agents.map((a) => a.name)).toContain("ALPHA");
+      expect(agents.map((a) => a.name)).toContain("BETA");
     });
 
     it("ignores agents with missing secret", () => {

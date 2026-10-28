@@ -50,7 +50,7 @@ async function main() {
     body: JSON.stringify({ budget, window, dimensions }),
   });
 
-  const data = await res.json() as { result?: unknown; errors?: { message: string }[] };
+  const data = (await res.json()) as { result?: unknown; errors?: { message: string }[] };
   if (!res.ok) {
     console.error("Failed to create spend limit:", JSON.stringify(data, null, 2));
     process.exit(1);

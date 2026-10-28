@@ -5,7 +5,9 @@ const originalFetch = globalThis.fetch;
 const kvStore = new Map<string, string>();
 const mockKV = {
   get: async (key: string) => kvStore.get(key) ?? null,
-  put: async (key: string, value: string) => { kvStore.set(key, value); },
+  put: async (key: string, value: string) => {
+    kvStore.set(key, value);
+  },
 };
 
 const mockEnv = {
@@ -127,7 +129,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/demo"));
       const text = await res.text();
       expect(text).not.toContain("el.innerHTML +=");
-      expect(text).not.toContain('el.innerHTML = `[${time}');
+      expect(text).not.toContain("el.innerHTML = `[${time}");
       expect(text).toContain("textContent");
     });
 
@@ -158,11 +160,13 @@ describe("AI Gateway Demo", () => {
     });
 
     it("POST /api/costs saves costs to KV", async () => {
-      const postRes = await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
-      }));
+      const postRes = await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
+        }),
+      );
       expect(postRes.status).toBe(200);
       const postData = (await postRes.json()) as { ok: boolean };
       expect(postData.ok).toBe(true);
@@ -181,11 +185,13 @@ describe("AI Gateway Demo", () => {
     });
 
     it("POST /demo/api/costs saves costs to KV", async () => {
-      const postRes = await fetchApp(new Request("http://localhost/demo/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0.000003, per_token_out: 0.000004 }),
-      }));
+      const postRes = await fetchApp(
+        new Request("http://localhost/demo/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.000003, per_token_out: 0.000004 }),
+        }),
+      );
       expect(postRes.status).toBe(200);
 
       const getRes = await fetchApp(new Request("http://localhost/demo/api/costs"));
@@ -195,22 +201,26 @@ describe("AI Gateway Demo", () => {
 
     it("overwrites high costs with low costs on re-save", async () => {
       // Save high costs first
-      await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0.01, per_token_out: 0.05 }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.01, per_token_out: 0.05 }),
+        }),
+      );
 
       let getRes = await fetchApp(new Request("http://localhost/api/costs"));
       let getData = (await getRes.json()) as { costs: Record<string, number> };
       expect(getData.costs).toEqual({ per_token_in: 0.01, per_token_out: 0.05 });
 
       // Overwrite with low costs
-      await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
+        }),
+      );
 
       getRes = await fetchApp(new Request("http://localhost/api/costs"));
       getData = (await getRes.json()) as { costs: Record<string, number> };
@@ -236,38 +246,46 @@ describe("AI Gateway Demo", () => {
     });
 
     it("POST /api/costs rejects negative numbers", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: -1, per_token_out: 0.000002 }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: -1, per_token_out: 0.000002 }),
+        }),
+      );
       expect(res.status).toBe(400);
     });
 
     it("POST /api/costs rejects non-numeric values", async () => {
-      const res = await fetchApp(new Request("http://localhost/demo/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: "free", per_token_out: 0.000002 }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: "free", per_token_out: 0.000002 }),
+        }),
+      );
       expect(res.status).toBe(400);
     });
 
     it("POST /api/costs rejects missing fields", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0.000001 }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.000001 }),
+        }),
+      );
       expect(res.status).toBe(400);
     });
 
     it("POST /api/costs still accepts valid zero", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/costs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ per_token_in: 0, per_token_out: 0 }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0, per_token_out: 0 }),
+        }),
+      );
       expect(res.status).toBe(200);
     });
 
@@ -282,18 +300,22 @@ describe("AI Gateway Demo", () => {
 
     it("chat tolerates corrupt KV custom_costs (no custom cost header sent)", async () => {
       kvStore.set("custom_costs", "not-json{{{");
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
       expect(res.status).toBe(200);
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(callArgs[1].headers["cf-aig-custom-cost"]).toBeUndefined();
@@ -304,35 +326,47 @@ describe("AI Gateway Demo", () => {
 
   describe("Chat (Worker proxy)", () => {
     it("returns upstream response when fetch succeeds", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hello back" } }],
-      }, { headers: { "cf-aig-cache-status": "MISS" } }));
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        mockRes(
+          {
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+            choices: [{ message: { content: "Hello back" } }],
+          },
+          { headers: { "cf-aig-cache-status": "MISS" } },
+        ),
+      );
 
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
       expect(res.status).toBe(200);
-      const data = (await res.json()) as { ok: boolean; cacheStatus: string; estimatedCost: number | undefined };
+      const data = (await res.json()) as {
+        ok: boolean;
+        cacheStatus: string;
+        estimatedCost: number | undefined;
+      };
       expect(data.ok).toBe(true);
       expect(data.cacheStatus).toBe("MISS");
       expect(data.estimatedCost).toBeUndefined();
     });
 
     it("returns 429 when upstream is rate limited", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes(
-        { error: { message: "Rate limited" } },
-        { status: 429 }
-      ));
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ error: { message: "Rate limited" } }, { status: 429 }));
 
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
       expect(res.status).toBe(429);
       const data = (await res.json()) as { ok: boolean; status: number };
       expect(data.ok).toBe(false);
@@ -340,67 +374,89 @@ describe("AI Gateway Demo", () => {
     });
 
     it("uses KV custom costs when no headers provided", async () => {
-      kvStore.set("custom_costs", JSON.stringify({ per_token_in: 0.00001, per_token_out: 0.00003 }));
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      kvStore.set(
+        "custom_costs",
+        JSON.stringify({ per_token_in: 0.00001, per_token_out: 0.00003 }),
+      );
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       expect(res.status).toBe(200);
       const data = (await res.json()) as { estimatedCost: number };
       expect(data.estimatedCost).toBeCloseTo(0.0007, 6);
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
-      expect(callArgs[1].headers["cf-aig-custom-cost"]).toBe('{"per_token_in":0.00001,"per_token_out":0.00003}');
+      expect(callArgs[1].headers["cf-aig-custom-cost"]).toBe(
+        '{"per_token_in":0.00001,"per_token_out":0.00003}',
+      );
     });
 
     it("applies custom cost headers from client", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-custom-cost-in": "0.00001",
-          "x-custom-cost-out": "0.00003",
-        },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-custom-cost-in": "0.00001",
+            "x-custom-cost-out": "0.00003",
+          },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
-      expect(callArgs[1].headers["cf-aig-custom-cost"]).toBe('{"per_token_in":0.00001,"per_token_out":0.00003}');
+      expect(callArgs[1].headers["cf-aig-custom-cost"]).toBe(
+        '{"per_token_in":0.00001,"per_token_out":0.00003}',
+      );
     });
 
     it("applies cache and metadata parameters", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }, { headers: { "cf-aig-cache-status": "HIT" } }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes(
+          {
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+            choices: [{ message: { content: "Hi" } }],
+          },
+          { headers: { "cf-aig-cache-status": "HIT" } },
+        ),
+      );
       globalThis.fetch = mockFetch;
 
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          cache: { ttl: 300, key: "test-key" },
-          metadata: { team: "demo" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            cache: { ttl: 300, key: "test-key" },
+            metadata: { team: "demo" },
+          }),
         }),
-      }));
+      );
 
       expect(res.status).toBe(200);
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -410,22 +466,26 @@ describe("AI Gateway Demo", () => {
     });
 
     it("passes session_id in cf-aig-metadata to upstream", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          metadata: { session_id: "sess-abc123", team: "demo" },
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            metadata: { session_id: "sess-abc123", team: "demo" },
+          }),
         }),
-      }));
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       const meta = JSON.parse(callArgs[1].headers["cf-aig-metadata"]);
@@ -434,61 +494,71 @@ describe("AI Gateway Demo", () => {
     });
 
     it("rejects metadata with reserved cf. keys", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          metadata: { "cf.user_id": "spoof" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            metadata: { "cf.user_id": "spoof" },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(400);
     });
 
     it("rejects metadata with more than 5 keys", async () => {
-      const res = await fetchApp(new Request("http://localhost/demo/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          metadata: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 },
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            metadata: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(400);
     });
 
     it("rejects metadata with object values", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          metadata: { nested: { bad: true } },
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            metadata: { nested: { bad: true } },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(400);
     });
 
     it("skips cache when skip flag is set", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          cache: { ttl: 300, skip: true },
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            cache: { ttl: 300, skip: true },
+          }),
         }),
-      }));
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(callArgs[1].headers["cf-aig-skip-cache"]).toBe("true");
@@ -496,18 +566,22 @@ describe("AI Gateway Demo", () => {
     });
 
     it("sends service token headers to upstream", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(callArgs[1].headers["CF-Access-Client-Id"]).toBe("fake-access-id");
@@ -515,18 +589,22 @@ describe("AI Gateway Demo", () => {
     });
 
     it("prefixes model with workers-ai/", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { body: string }];
       const sentBody = JSON.parse(callArgs[1].body);
@@ -534,18 +612,22 @@ describe("AI Gateway Demo", () => {
     });
 
     it("chat upstream fetch carries an AbortSignal timeout", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { signal?: AbortSignal }];
       expect(callArgs[1].signal).toBeInstanceOf(AbortSignal);
@@ -563,17 +645,19 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      await fetchApp(new Request("http://localhost/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
 
       const putCall = (globalThis.fetch as any).mock.calls.find(
-        ([, o]: [unknown, any]) => o?.method === "PUT"
+        ([, o]: [unknown, any]) => o?.method === "PUT",
       ) as [string, { signal?: AbortSignal }];
       expect(putCall[1].signal).toBeInstanceOf(AbortSignal);
     });
@@ -583,17 +667,24 @@ describe("AI Gateway Demo", () => {
 
   describe("Chat (/demo/api proxy)", () => {
     it("/demo/api/chat returns upstream response", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
-        choices: [{ message: { content: "Hello back" } }],
-      }, { headers: { "cf-aig-cache-status": "MISS" } }));
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        mockRes(
+          {
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+            choices: [{ message: { content: "Hello back" } }],
+          },
+          { headers: { "cf-aig-cache-status": "MISS" } },
+        ),
+      );
 
-      const res = await fetchApp(new Request("http://localhost/demo/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; cacheStatus: string };
       expect(data.ok).toBe(true);
@@ -601,18 +692,22 @@ describe("AI Gateway Demo", () => {
     });
 
     it("/demo/api/chat sends service token headers", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/demo/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
-      }));
+      await fetchApp(
+        new Request("http://localhost/demo/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
+        }),
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(callArgs[1].headers["CF-Access-Client-Id"]).toBe("fake-access-id");
@@ -620,23 +715,27 @@ describe("AI Gateway Demo", () => {
     });
 
     it("/demo/api/chat applies cache headers", async () => {
-      const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-        usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
-        choices: [{ message: { content: "Hi" } }],
-      }));
+      const mockFetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+          choices: [{ message: { content: "Hi" } }],
+        }),
+      );
       globalThis.fetch = mockFetch;
 
-      await fetchApp(new Request("http://localhost/demo/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
-          prompt: "Hello",
-          cache: { ttl: 600, key: "demo-key" },
-          metadata: { env: "test" },
+      await fetchApp(
+        new Request("http://localhost/demo/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "Hello",
+            cache: { ttl: 600, key: "demo-key" },
+            metadata: { env: "test" },
+          }),
         }),
-      }));
+      );
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
       expect(callArgs[1].headers["cf-aig-cache-ttl"]).toBe("600");
@@ -649,26 +748,30 @@ describe("AI Gateway Demo", () => {
 
   describe("Gateway Settings", () => {
     it("POST /api/settings returns error without valid API token", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect([500, 502]).toContain(res.status);
     });
 
     it("POST /demo/api/settings returns error without valid API token", async () => {
-      const res = await fetchApp(new Request("http://localhost/demo/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect([500, 502]).toContain(res.status);
     });
 
@@ -679,22 +782,28 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/spend-limits") && method === "GET") {
-          return Promise.resolve(mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }));
+          return Promise.resolve(
+            mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }),
+          );
         }
         if (url.includes("/spend-limits") && method === "DELETE") {
-          return Promise.resolve(mockRes({ success: false, errors: [{ message: "boom" }] }, { status: 500 }));
+          return Promise.resolve(
+            mockRes({ success: false, errors: [{ message: "boom" }] }, { status: 500 }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; warnings?: string[] };
       expect(data.ok).toBe(true);
@@ -708,7 +817,9 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/spend-limits") && method === "GET") {
-          return Promise.resolve(mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }));
+          return Promise.resolve(
+            mockRes({ result: [{ id: "rule-1" }, { id: "rule-2" }], success: true }),
+          );
         }
         if (url.includes("/spend-limits") && method === "DELETE") {
           return Promise.resolve(mockRes({ result: { id: "deleted" }, success: true }));
@@ -716,20 +827,22 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; warnings?: string[] };
       expect(data.ok).toBe(true);
       expect(data.warnings ?? []).toHaveLength(0);
       const deletes = (globalThis.fetch as any).mock.calls.filter(
-        ([, o]: [unknown, any]) => o?.method === "DELETE"
+        ([, o]: [unknown, any]) => o?.method === "DELETE",
       );
       expect(deletes).toHaveLength(2);
     });
@@ -748,14 +861,16 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: false, limit: 100, interval: 60, technique: "sliding" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "sliding" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(200);
       expect(putBody.rate_limiting_limit).toBe(0);
       expect(putBody.rate_limiting_interval).toBe(0);
@@ -776,14 +891,16 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/demo/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
-          spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
         }),
-      }));
+      );
       expect(res.status).toBe(200);
       expect(putBody.rate_limiting_limit).toBe(100);
       expect(putBody.rate_limiting_technique).toBe("fixed");
@@ -806,44 +923,61 @@ describe("AI Gateway Demo", () => {
     it("returns aggregated requests, tokens, and cost from GraphQL", async () => {
       globalThis.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/ai-gateway/gateways/")) {
-          return Promise.resolve(mockRes({
-            result: {
-              id: "demo-gateway",
-              cache_ttl: 0,
-              rate_limiting_limit: 50,
-              rate_limiting_interval: 60,
-            },
-            success: true,
-          }));
+          return Promise.resolve(
+            mockRes({
+              result: {
+                id: "demo-gateway",
+                cache_ttl: 0,
+                rate_limiting_limit: 50,
+                rate_limiting_interval: 60,
+              },
+              success: true,
+            }),
+          );
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: {
-              viewer: {
-                accounts: [{
-                  aiGatewayRequestsAdaptiveGroups: [
+          return Promise.resolve(
+            mockRes({
+              data: {
+                viewer: {
+                  accounts: [
                     {
-                      count: 5,
-                      sum: { tokensIn: 220, tokensOut: 217, cost: 13.05 },
-                      dimensions: { model: "@cf/meta/llama-3.1-8b-instruct-fp8", gateway: "demo-gateway" },
-                    },
-                    {
-                      count: 11,
-                      sum: { tokensIn: 3397, tokensOut: 33, cost: 0.0016 },
-                      dimensions: { model: "@cf/meta/llama-guard-3-8b", gateway: "demo-gateway" },
+                      aiGatewayRequestsAdaptiveGroups: [
+                        {
+                          count: 5,
+                          sum: { tokensIn: 220, tokensOut: 217, cost: 13.05 },
+                          dimensions: {
+                            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+                            gateway: "demo-gateway",
+                          },
+                        },
+                        {
+                          count: 11,
+                          sum: { tokensIn: 3397, tokensOut: 33, cost: 0.0016 },
+                          dimensions: {
+                            model: "@cf/meta/llama-guard-3-8b",
+                            gateway: "demo-gateway",
+                          },
+                        },
+                      ],
                     },
                   ],
-                }],
+                },
               },
-            },
-          }));
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
 
       const res = await fetchApp(new Request("http://localhost/api/stats"));
       expect(res.status).toBe(200);
-      const data = (await res.json()) as { ok: boolean; requests: number; tokens: number; cost: string };
+      const data = (await res.json()) as {
+        ok: boolean;
+        requests: number;
+        tokens: number;
+        cost: string;
+      };
       expect(data.ok).toBe(true);
       expect(data.requests).toBe(16);
       expect(data.tokens).toBe(3867);
@@ -858,9 +992,11 @@ describe("AI Gateway Demo", () => {
         }
         if (url.includes("/graphql")) {
           graphqlBody = opts.body;
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
@@ -880,16 +1016,23 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
 
       const res = await fetchApp(new Request("http://localhost/api/stats"));
       expect(res.status).toBe(200);
-      const data = (await res.json()) as { ok: boolean; requests: string; tokens: string; cost: string };
+      const data = (await res.json()) as {
+        ok: boolean;
+        requests: string;
+        tokens: string;
+        cost: string;
+      };
       expect(data.ok).toBe(true);
       expect(data.requests).toBe("-");
       expect(data.tokens).toBe("-");
@@ -899,20 +1042,24 @@ describe("AI Gateway Demo", () => {
     it("returns gateway config fields (cacheTTL, rlLimit, rlInterval)", async () => {
       globalThis.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/ai-gateway/gateways/")) {
-          return Promise.resolve(mockRes({
-            result: {
-              id: "demo-gateway",
-              cache_ttl: 300,
-              rate_limiting_limit: 100,
-              rate_limiting_interval: 60,
-            },
-            success: true,
-          }));
+          return Promise.resolve(
+            mockRes({
+              result: {
+                id: "demo-gateway",
+                cache_ttl: 300,
+                rate_limiting_limit: 100,
+                rate_limiting_interval: 60,
+              },
+              success: true,
+            }),
+          );
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
@@ -933,9 +1080,11 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
@@ -954,9 +1103,11 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
@@ -975,9 +1126,11 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: { viewer: { accounts: [{ aiGatewayRequestsAdaptiveGroups: [] }] } },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
@@ -1009,20 +1162,37 @@ describe("AI Gateway Demo", () => {
           return Promise.resolve(mockRes({ result: { cache_ttl: 0 }, success: true }));
         }
         if (url.includes("/graphql")) {
-          return Promise.resolve(mockRes({
-            data: { viewer: { accounts: [{
-              aiGatewayRequestsAdaptiveGroups: [
-                { count: 3, sum: { tokensIn: 100, tokensOut: 50, cost: 1.5 }, dimensions: {} },
-              ],
-            }] } },
-          }));
+          return Promise.resolve(
+            mockRes({
+              data: {
+                viewer: {
+                  accounts: [
+                    {
+                      aiGatewayRequestsAdaptiveGroups: [
+                        {
+                          count: 3,
+                          sum: { tokensIn: 100, tokensOut: 50, cost: 1.5 },
+                          dimensions: {},
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            }),
+          );
         }
         return Promise.resolve(mockRes({}));
       });
 
       const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
       expect(res.status).toBe(200);
-      const data = (await res.json()) as { ok: boolean; requests: number; tokens: number; cost: string };
+      const data = (await res.json()) as {
+        ok: boolean;
+        requests: number;
+        tokens: number;
+        cost: string;
+      };
       expect(data.ok).toBe(true);
       expect(data.requests).toBe(3);
       expect(data.tokens).toBe(150);
@@ -1040,9 +1210,11 @@ describe("AI Gateway Demo", () => {
 
     it("GET /demo/api/bootstrap returns 500 when upstream fetch rejects", async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
-      const res = await fetchApp(new Request("http://localhost/demo/api/bootstrap", {
-        headers: { "Authorization": "Bearer fake-token" },
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/bootstrap", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(500);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
@@ -1055,17 +1227,23 @@ describe("AI Gateway Demo", () => {
     });
 
     it("GET /api/bootstrap returns 401 with wrong token", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/bootstrap", {
-        headers: { "Authorization": "Bearer wrong-token" },
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/bootstrap", {
+          headers: { Authorization: "Bearer wrong-token" },
+        }),
+      );
       expect(res.status).toBe(401);
     });
 
     it("GET /api/bootstrap returns gateway with correct token", async () => {
-      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
-      const res = await fetchApp(new Request("http://localhost/api/bootstrap", {
-        headers: { "Authorization": "Bearer fake-token" },
-      }));
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/bootstrap", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; created: boolean };
       expect(data.ok).toBe(true);
@@ -1077,13 +1255,20 @@ describe("AI Gateway Demo", () => {
         if (opts?.method === "POST") {
           return Promise.resolve(mockRes({ result: { id: "demo-gateway" }, success: true }));
         }
-        return Promise.resolve({ ok: false, status: 404, text: async () => "not found", json: async () => ({}) } as unknown as Response);
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          text: async () => "not found",
+          json: async () => ({}),
+        } as unknown as Response);
       });
       globalThis.fetch = mockFetch;
 
-      const res = await fetchApp(new Request("http://localhost/demo/api/bootstrap", {
-        headers: { "Authorization": "Bearer fake-token" },
-      }));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/bootstrap", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; created: boolean };
       expect(data.created).toBe(true);

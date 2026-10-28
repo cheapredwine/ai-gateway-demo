@@ -92,7 +92,12 @@ export function buildCacheHeaders(): Record<string, string> {
   return { "cf-aig-skip-cache": "true" };
 }
 
-export function buildMetadata(sessionId: string, agent: string, team: string, source: string): Record<string, unknown> {
+export function buildMetadata(
+  sessionId: string,
+  agent: string,
+  team: string,
+  source: string,
+): Record<string, unknown> {
   return { session_id: sessionId, agent, team, source };
 }
 

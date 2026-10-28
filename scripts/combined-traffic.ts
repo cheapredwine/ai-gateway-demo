@@ -49,7 +49,12 @@ async function sleep(ms: number) {
 
 // ─── Service Token Traffic ──────────────────────────────────────────────────
 
-async function runAgent(agent: AgentCreds, count: number, delay: number, results: { ok: number; blocked: number; err: number }) {
+async function runAgent(
+  agent: AgentCreds,
+  count: number,
+  delay: number,
+  results: { ok: number; blocked: number; err: number },
+) {
   const favoredModel = randomChoice(MODELS);
   const favoredTeam = randomChoice(TEAMS);
   const token = process.env.CLOUDFLARE_API_TOKEN;
@@ -60,11 +65,11 @@ async function runAgent(agent: AgentCreds, count: number, delay: number, results
     const sessionId = `sess-${agent.name.toLowerCase()}-${Math.random().toString(36).slice(2, 8)}`;
     const team = Math.random() < 0.7 ? favoredTeam : randomChoice(TEAMS);
     const source = randomChoice(SOURCES);
-    const cost = buildCustomCost(randomFloat(0.000001, 0.000010), randomFloat(0.000002, 0.000020));
+    const cost = buildCustomCost(randomFloat(0.000001, 0.00001), randomFloat(0.000002, 0.00002));
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "CF-Access-Client-Id": agent.id,
       "CF-Access-Client-Secret": agent.secret,
       "cf-aig-custom-cost": JSON.stringify(cost),
@@ -86,7 +91,9 @@ async function runAgent(agent: AgentCreds, count: number, delay: number, results
       if (res.status === 200) {
         const data = (await res.json().catch(() => ({}))) as any;
         const tokens = data.usage?.total_tokens ?? "?";
-        console.log(`[AGENT ${agent.name}] ${time} #${i + 1}/${count} OK | ${tokens} tokens | ${model}`);
+        console.log(
+          `[AGENT ${agent.name}] ${time} #${i + 1}/${count} OK | ${tokens} tokens | ${model}`,
+        );
         results.ok++;
       } else if (res.status === 429) {
         console.log(`[AGENT ${agent.name}] ${time} #${i + 1}/${count} BLOCKED (429)`);
@@ -96,7 +103,9 @@ async function runAgent(agent: AgentCreds, count: number, delay: number, results
         results.err++;
       }
     } catch (e: any) {
-      console.log(`[AGENT ${agent.name}] ${new Date().toLocaleTimeString()} #${i + 1}/${count} NET ERR: ${e.message}`);
+      console.log(
+        `[AGENT ${agent.name}] ${new Date().toLocaleTimeString()} #${i + 1}/${count} NET ERR: ${e.message}`,
+      );
       results.err++;
     }
 
@@ -106,12 +115,18 @@ async function runAgent(agent: AgentCreds, count: number, delay: number, results
 
 // ─── Human Identity Traffic (cloudflared access curl) ─────────────────────────
 
-async function runHumanTraffic(count: number, delay: number, results: { ok: number; blocked: number; err: number }) {
+async function runHumanTraffic(
+  count: number,
+  delay: number,
+  results: { ok: number; blocked: number; err: number },
+) {
   const favoredModel = randomChoice(MODELS);
   const favoredTeam = randomChoice(TEAMS);
   const token = process.env.CLOUDFLARE_API_TOKEN;
 
-  console.log(`[HUMAN] model=${favoredModel} team=${favoredTeam} | Firing ${count} requests via cloudflared...`);
+  console.log(
+    `[HUMAN] model=${favoredModel} team=${favoredTeam} | Firing ${count} requests via cloudflared...`,
+  );
 
   for (let i = 0; i < count; i++) {
     const model = Math.random() < 0.7 ? favoredModel : randomChoice(MODELS);
@@ -119,7 +134,7 @@ async function runHumanTraffic(count: number, delay: number, results: { ok: numb
     const sessionId = `sess-human-${Math.random().toString(36).slice(2, 8)}`;
     const team = Math.random() < 0.7 ? favoredTeam : randomChoice(TEAMS);
     const source = randomChoice(SOURCES);
-    const cost = buildCustomCost(randomFloat(0.000001, 0.000010), randomFloat(0.000002, 0.000020));
+    const cost = buildCustomCost(randomFloat(0.000001, 0.00001), randomFloat(0.000002, 0.00002));
     const cacheHdr = Object.entries(buildCacheHeaders())
       .map(([k, v]) => `-H "${k}: ${v}"`)
       .join(" ");
@@ -139,8 +154,8 @@ async function runHumanTraffic(count: number, delay: number, results: { ok: numb
         const child = spawn("bash", ["-c", cmd], { stdio: ["ignore", "pipe", "pipe"] });
         let stdout = "";
         let stderr = "";
-        child.stdout.on("data", (d) => stdout += d.toString());
-        child.stderr.on("data", (d) => stderr += d.toString());
+        child.stdout.on("data", (d) => (stdout += d.toString()));
+        child.stderr.on("data", (d) => (stderr += d.toString()));
         child.on("close", (code) => {
           if (code !== 0 && code !== null) reject(new Error(stderr || `exit ${code}`));
           else resolve(stdout);
@@ -171,7 +186,9 @@ async function runHumanTraffic(count: number, delay: number, results: { ok: numb
         results.err++;
       }
     } catch (e: any) {
-      console.log(`[HUMAN] ${new Date().toLocaleTimeString()} #${i + 1}/${count} NET ERR: ${e.message}`);
+      console.log(
+        `[HUMAN] ${new Date().toLocaleTimeString()} #${i + 1}/${count} NET ERR: ${e.message}`,
+      );
       results.err++;
     }
 
@@ -225,10 +242,14 @@ async function main() {
   console.log("  Combined Traffic Complete");
   console.log("═══════════════════════════════════════════════════════");
   if (!skipAgents) {
-    console.log(`  Agents:   OK=${agentResults.ok}  429=${agentResults.blocked}  ERR=${agentResults.err}`);
+    console.log(
+      `  Agents:   OK=${agentResults.ok}  429=${agentResults.blocked}  ERR=${agentResults.err}`,
+    );
   }
   if (!skipHuman) {
-    console.log(`  Human:    OK=${humanResults.ok}  429=${humanResults.blocked}  ERR=${humanResults.err}`);
+    console.log(
+      `  Human:    OK=${humanResults.ok}  429=${humanResults.blocked}  ERR=${humanResults.err}`,
+    );
   }
   console.log("═══════════════════════════════════════════════════════");
 }

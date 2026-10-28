@@ -108,7 +108,7 @@ export function renderHtml(opts: UiOptions): string {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>${gatewayName}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span>${isGateway ? ' | <button id="logoutBtn" onclick="accessLogout()" style="background:#dc2626;color:white;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-left:0.5rem;">Access Logout</button>' : ''}</p>
+    <p class="subtitle">Gateway: <strong>${gatewayName}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span>${isGateway ? ' | <button id="logoutBtn" onclick="accessLogout()" style="background:#dc2626;color:white;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-left:0.5rem;">Access Logout</button>' : ""}</p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->

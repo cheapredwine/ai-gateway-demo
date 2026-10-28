@@ -2,10 +2,10 @@
 
 ## Demo URLs
 
-| URL | Mode | Identity | Access |
-|---|---|---|---|
-| `https://ai-gw.jsherron.com/demo` | Gateway (human) | `cf.user_id` — shows in dashboard | Browser login (OTP/IdP) |
-| `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` | Worker proxy (service) | `cf.common_name` — logs API only | None (Worker holds service token) |
+| URL                                                                | Mode                   | Identity                          | Access                            |
+| ------------------------------------------------------------------ | ---------------------- | --------------------------------- | --------------------------------- |
+| `https://ai-gw.jsherron.com/demo`                                  | Gateway (human)        | `cf.user_id` — shows in dashboard | Browser login (OTP/IdP)           |
+| `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` | Worker proxy (service) | `cf.common_name` — logs API only  | None (Worker holds service token) |
 
 ---
 
@@ -279,6 +279,7 @@ AGENT_REQS=30 HUMAN_REQS=30 npx tsx scripts/combined-traffic.ts
 ```
 
 Environment variables:
+
 - `AGENT_COUNT` — number of agents (auto-discovered from env)
 - `AGENT_REQS` — requests per agent (default 15)
 - `AGENT_DELAY` — delay between agent requests in ms (default 600)
@@ -287,13 +288,13 @@ Environment variables:
 
 ### 8.6 When to use which script
 
-| Script | Identity | Scale | Setup |
-|---|---|---|---|
-| `traffic-snippet.js` | Human | Ad-hoc, small | Browser console only |
-| `traffic.sh` | Human | Medium | `cloudflared` installed |
-| `human-identity-traffic.ts` | Human | Medium-large | Playwright + first-run login |
-| `multi-agent-traffic.sh` | Service | Medium (parallel) | `AGENT_*` creds in `.dev.vars` |
-| `combined-traffic.ts` | Both | Large (parallel) | All of the above |
+| Script                      | Identity | Scale             | Setup                          |
+| --------------------------- | -------- | ----------------- | ------------------------------ |
+| `traffic-snippet.js`        | Human    | Ad-hoc, small     | Browser console only           |
+| `traffic.sh`                | Human    | Medium            | `cloudflared` installed        |
+| `human-identity-traffic.ts` | Human    | Medium-large      | Playwright + first-run login   |
+| `multi-agent-traffic.sh`    | Service  | Medium (parallel) | `AGENT_*` creds in `.dev.vars` |
+| `combined-traffic.ts`       | Both     | Large (parallel)  | All of the above               |
 
 ---
 
@@ -322,14 +323,14 @@ for log in json.load(sys.stdin).get('result', [])[:3]:
 
 ## Summary: Identity Comparison
 
-| | Human (Gateway Mode) | Service (Worker Proxy) |
-|---|---|---|
-| **URL** | `ai-gw.jsherron.com/demo` | `...workers.dev` |
-| **Auth** | Access (OTP/IdP) | Service token (Worker secret) |
-| **Identity field** | `cf.user_id` | `cf.common_name` |
-| **Dashboard visibility** | User Insights, per-user limits | Not shown |
-| **Logs API** | Yes | Yes |
-| **Per-user spend limits** | Yes | No |
-| **Per-user rate limits** | Yes | No |
-| **User agent** | Browser | `cloudflare-worker` |
-| **API token in browser** | No | No (Worker holds it) |
+|                           | Human (Gateway Mode)           | Service (Worker Proxy)        |
+| ------------------------- | ------------------------------ | ----------------------------- |
+| **URL**                   | `ai-gw.jsherron.com/demo`      | `...workers.dev`              |
+| **Auth**                  | Access (OTP/IdP)               | Service token (Worker secret) |
+| **Identity field**        | `cf.user_id`                   | `cf.common_name`              |
+| **Dashboard visibility**  | User Insights, per-user limits | Not shown                     |
+| **Logs API**              | Yes                            | Yes                           |
+| **Per-user spend limits** | Yes                            | No                            |
+| **Per-user rate limits**  | Yes                            | No                            |
+| **User agent**            | Browser                        | `cloudflare-worker`           |
+| **API token in browser**  | No                             | No (Worker holds it)          |

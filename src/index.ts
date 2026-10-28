@@ -453,6 +453,27 @@ export async function fetchGuardrailsActivity(
 
 dualRoute("post", "/chat", chatHandler);
 
+// Activity lookup for gateway mode, where the browser calls the gateway's
+// /compat/chat/completions directly and chatHandler's response enrichment
+// never runs. The UI calls this after each gateway-mode chat with the
+// request's start time. Admin-gated: it exposes Llama Guard evaluation
+// metadata (durations, token counts) sourced with the account API token.
+const guardrailsActivityHandler = async (c: AppContext) => {
+  const gate = await requireAdmin(c);
+  if (gate) return gate;
+  const sinceParam = c.req.query("since");
+  const sinceMs = sinceParam ? Number.parseInt(sinceParam, 10) : Date.now() - 15000;
+  if (Number.isNaN(sinceMs)) {
+    return c.json({ ok: false, error: "since must be an epoch-milliseconds integer" }, 400);
+  }
+  const guardrails = await fetchGuardrailsActivity(c.env, sinceMs);
+  return c.json({
+    ok: true,
+    guardrails: guardrails ?? { evaluations: 0, totalMs: 0, entries: [] },
+  });
+};
+dualRoute("get", "/guardrails-activity", guardrailsActivityHandler);
+
 // ─── API: Custom Costs ───────────────────────────────────────────────────────
 
 const costsGetHandler = async (c: AppContext) => {

@@ -1256,6 +1256,69 @@ describe("AI Gateway Demo", () => {
     });
   });
 
+  describe("Guardrails activity (gateway-mode lookup)", () => {
+    it("requires admin auth", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/guardrails-activity", { method: "GET" }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("returns llama-guard evaluations within the requested window", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        mockRes({
+          result: [
+            {
+              request_type: "llama-guard",
+              created_at: new Date().toISOString(),
+              duration: 8000,
+              tokens_in: 500,
+            },
+            {
+              request_type: "llama-guard",
+              created_at: new Date(Date.now() - 60_000).toISOString(), // outside window
+              duration: 500,
+              tokens_in: 10,
+            },
+            { request_type: "provider", created_at: new Date().toISOString(), duration: 900 },
+          ],
+          success: true,
+        }),
+      );
+
+      const res = await fetchApp(
+        new Request(`http://localhost/api/guardrails-activity?since=${Date.now() - 5000}`, {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        ok: boolean;
+        guardrails: { evaluations: number; totalMs: number };
+      };
+      expect(data.ok).toBe(true);
+      expect(data.guardrails.evaluations).toBe(1);
+      expect(data.guardrails.totalMs).toBe(8000);
+    });
+
+    it("defaults to a zero-activity shape when the logs lookup fails", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("logs down"));
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/guardrails-activity", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        ok: boolean;
+        guardrails: { evaluations: number };
+      };
+      expect(data.ok).toBe(true);
+      expect(data.guardrails.evaluations).toBe(0);
+    });
+  });
+
   // ─── Stats ────────────────────────────────────────────────────────────────
 
   describe("Stats", () => {

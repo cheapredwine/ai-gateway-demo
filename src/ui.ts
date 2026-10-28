@@ -510,8 +510,10 @@ export function renderHtml(opts: UiOptions): string {
         const sendOne = async (i) => {
           log(\`Sending #\${i+1} to \${model} [session: \${sessionId}]...\`, "info");
           try {
+            let reqStart;
             if (onGateway) {
               // Gateway mode: call /compat/chat/completions directly (Access injects cf.user_id)
+              reqStart = Date.now();
               const headers = { "Content-Type": "application/json" };
               if (useCustom) {
                 headers["cf-aig-custom-cost"] = JSON.stringify({ per_token_in: costIn, per_token_out: costOut });
@@ -550,6 +552,20 @@ export function renderHtml(opts: UiOptions): string {
                   costStr = "$" + est.toFixed(6);
                 }
                 log(\`OK \${tokens} tokens | est cost \${costStr}\${cacheStr} | \${data.model || model}\`, "success");
+                // Gateway mode bypasses our Worker for the chat itself, so
+                // guardrails enrichment isn't in the response — look it up
+                // after the fact (admin-gated; works because the Access JWT
+                // is injected into same-origin requests here).
+                try {
+                  const actRes = await fetch(\`\${API}/api/guardrails-activity?since=\${reqStart}\`);
+                  if (actRes.ok) {
+                    const actData = await actRes.json();
+                    const gw = actData.guardrails;
+                    if (gw && gw.evaluations > 0) {
+                      log(\`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\`, "warn");
+                    }
+                  }
+                } catch (e2) {}
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
               } else {

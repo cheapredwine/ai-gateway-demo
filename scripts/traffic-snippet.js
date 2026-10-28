@@ -3,7 +3,7 @@
 
 (async () => {
   const models = [
-    "@cf/meta/llama-3.1-8b-instruct-fast",
+    "@cf/meta/llama-3.1-8b-instruct-fp8",
     "@cf/meta/llama-3.2-3b-instruct",
     "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
     "@cf/qwen/qwen3-30b-a3b-fp8",

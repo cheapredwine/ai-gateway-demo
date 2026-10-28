@@ -118,7 +118,7 @@ export function renderHtml(opts: UiOptions): string {
         <label>Workers AI Model</label>
         <select id="model" onchange="onModelChange()">
           <optgroup label="Meta Llama">
-            <option value="@cf/meta/llama-3.1-8b-instruct-fast" selected>Llama 3.1 8B Fast</option>
+            <option value="@cf/meta/llama-3.1-8b-instruct-fp8" selected>Llama 3.1 8B FP8</option>
             <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B Instruct</option>
             <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B FP8 Fast</option>
             <option value="@cf/meta/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B</option>
@@ -148,11 +148,9 @@ export function renderHtml(opts: UiOptions): string {
             <option value="@cf/moonshotai/kimi-k2.7-code">Kimi K2.7 Code</option>
           </optgroup>
           <optgroup label="Other">
-            <option value="@cf/zhipuai/glm-4.7-flash">GLM 4.7 Flash</option>
-            <option value="@cf/ibm/granite-4.0-h-micro">IBM Granite 4.0</option>
+            <option value="@cf/zai-org/glm-4.7-flash">GLM 4.7 Flash</option>
+            <option value="@cf/ibm-granite/granite-4.0-h-micro">IBM Granite 4.0</option>
             <option value="@cf/nvidia/nemotron-3-120b-a12b">NVIDIA Nemotron 3 120B</option>
-            <option value="@cf/microsoft/phi-2">Microsoft Phi-2</option>
-            <option value="@cf/tinyllama/tinyllama-1.1b-chat-v1.0">TinyLlama 1.1B</option>
             <option value="custom">Custom model...</option>
           </optgroup>
         </select>

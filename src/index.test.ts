@@ -283,7 +283,7 @@ describe("AI Gateway Demo", () => {
     it("chat tolerates corrupt KV custom_costs (no custom cost header sent)", async () => {
       kvStore.set("custom_costs", "not-json{{{");
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -292,7 +292,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
       expect(res.status).toBe(200);
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -305,7 +305,7 @@ describe("AI Gateway Demo", () => {
   describe("Chat (Worker proxy)", () => {
     it("returns upstream response when fetch succeeds", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hello back" } }],
       }, { headers: { "cf-aig-cache-status": "MISS" } }));
@@ -313,7 +313,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; cacheStatus: string; estimatedCost: number | undefined };
@@ -331,7 +331,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
       expect(res.status).toBe(429);
       const data = (await res.json()) as { ok: boolean; status: number };
@@ -342,7 +342,7 @@ describe("AI Gateway Demo", () => {
     it("uses KV custom costs when no headers provided", async () => {
       kvStore.set("custom_costs", JSON.stringify({ per_token_in: 0.00001, per_token_out: 0.00003 }));
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -351,7 +351,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       expect(res.status).toBe(200);
@@ -363,7 +363,7 @@ describe("AI Gateway Demo", () => {
 
     it("applies custom cost headers from client", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -376,7 +376,7 @@ describe("AI Gateway Demo", () => {
           "x-custom-cost-in": "0.00001",
           "x-custom-cost-out": "0.00003",
         },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -385,7 +385,7 @@ describe("AI Gateway Demo", () => {
 
     it("applies cache and metadata parameters", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }, { headers: { "cf-aig-cache-status": "HIT" } }));
@@ -395,7 +395,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           cache: { ttl: 300, key: "test-key" },
           metadata: { team: "demo" },
@@ -411,7 +411,7 @@ describe("AI Gateway Demo", () => {
 
     it("passes session_id in cf-aig-metadata to upstream", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -421,7 +421,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           metadata: { session_id: "sess-abc123", team: "demo" },
         }),
@@ -438,7 +438,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           metadata: { "cf.user_id": "spoof" },
         }),
@@ -451,7 +451,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           metadata: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 },
         }),
@@ -464,7 +464,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           metadata: { nested: { bad: true } },
         }),
@@ -474,7 +474,7 @@ describe("AI Gateway Demo", () => {
 
     it("skips cache when skip flag is set", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -484,7 +484,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           cache: { ttl: 300, skip: true },
         }),
@@ -497,7 +497,7 @@ describe("AI Gateway Demo", () => {
 
     it("sends service token headers to upstream", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -506,7 +506,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -516,7 +516,7 @@ describe("AI Gateway Demo", () => {
 
     it("prefixes model with workers-ai/", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -525,17 +525,17 @@ describe("AI Gateway Demo", () => {
       await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       const callArgs = mockFetch.mock.calls[0] as [string, { body: string }];
       const sentBody = JSON.parse(callArgs[1].body);
-      expect(sentBody.model).toBe("workers-ai/@cf/meta/llama-3.1-8b-instruct-fast");
+      expect(sentBody.model).toBe("workers-ai/@cf/meta/llama-3.1-8b-instruct-fp8");
     });
 
     it("chat upstream fetch carries an AbortSignal timeout", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -544,7 +544,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(new Request("http://localhost/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       const callArgs = mockFetch.mock.calls[0] as [string, { signal?: AbortSignal }];
@@ -584,7 +584,7 @@ describe("AI Gateway Demo", () => {
   describe("Chat (/demo/api proxy)", () => {
     it("/demo/api/chat returns upstream response", async () => {
       globalThis.fetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
         choices: [{ message: { content: "Hello back" } }],
       }, { headers: { "cf-aig-cache-status": "MISS" } }));
@@ -592,7 +592,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(new Request("http://localhost/demo/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
       expect(res.status).toBe(200);
       const data = (await res.json()) as { ok: boolean; cacheStatus: string };
@@ -602,7 +602,7 @@ describe("AI Gateway Demo", () => {
 
     it("/demo/api/chat sends service token headers", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -611,7 +611,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(new Request("http://localhost/demo/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fast", prompt: "Hello" }),
+        body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "Hello" }),
       }));
 
       const callArgs = mockFetch.mock.calls[0] as [string, { headers: Record<string, string> }];
@@ -621,7 +621,7 @@ describe("AI Gateway Demo", () => {
 
     it("/demo/api/chat applies cache headers", async () => {
       const mockFetch = vi.fn().mockResolvedValue(mockRes({
-        model: "@cf/meta/llama-3.1-8b-instruct-fast",
+        model: "@cf/meta/llama-3.1-8b-instruct-fp8",
         usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
         choices: [{ message: { content: "Hi" } }],
       }));
@@ -631,7 +631,7 @@ describe("AI Gateway Demo", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "@cf/meta/llama-3.1-8b-instruct-fast",
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
           prompt: "Hello",
           cache: { ttl: 600, key: "demo-key" },
           metadata: { env: "test" },
@@ -825,7 +825,7 @@ describe("AI Gateway Demo", () => {
                     {
                       count: 5,
                       sum: { tokensIn: 220, tokensOut: 217, cost: 13.05 },
-                      dimensions: { model: "@cf/meta/llama-3.1-8b-instruct-fast", gateway: "demo-gateway" },
+                      dimensions: { model: "@cf/meta/llama-3.1-8b-instruct-fp8", gateway: "demo-gateway" },
                     },
                     {
                       count: 11,

@@ -119,6 +119,8 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 
 **Goal:** Show per-token cost overrides.
 
+> **Auth note:** Saving custom costs is admin-gated (see AGENTS.md Security). Demo this from gateway mode (`/demo`, Access-authenticated) — on the public `workers.dev` URL, Save will 401 unless you also supply the `CLOUDFLARE_API_TOKEN` bearer header. Reading the currently-saved costs stays open in both modes.
+
 ### 3.1 Set custom costs
 
 1. In the **Custom Costs** panel, set:
@@ -163,6 +165,8 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 
 **Goal:** Show gateway-level request limits.
 
+> **Auth note:** Applying Gateway Settings is admin-gated (see AGENTS.md Security) — same as Custom Costs above. Demo from gateway mode, or supply the bearer token.
+
 ### 5.1 Configure rate limiting
 
 1. In the **Gateway Settings** panel:
@@ -184,6 +188,8 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 ## Part 6: Spend Limits
 
 **Goal:** Show gateway-level budget enforcement.
+
+> **Auth note:** Same `Gateway Settings` endpoint as Part 5 — admin-gated, see that section's note.
 
 ### 6.1 Configure a spend limit
 

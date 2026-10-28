@@ -64,10 +64,16 @@ Two demo modes, one Worker:
 
 Set via `wrangler secret put`:
 
-- `CLOUDFLARE_API_TOKEN` — needs `AI Gateway:Edit`, `AI Gateway:Read`, `Workers AI:Read`
+- `CLOUDFLARE_API_TOKEN` — needs `AI Gateway:Edit`, `AI Gateway:Read`, `Workers AI:Read`. Also doubles as the admin bearer token for `/api/bootstrap`, `/api/settings`, `/api/costs` (write), `/api/stats` — see Security below.
 - `CLOUDFLARE_ACCOUNT_ID` — your Cloudflare account ID
 - `CF_ACCESS_CLIENT_ID` — Cloudflare Access service token client ID
 - `CF_ACCESS_CLIENT_SECRET` — Cloudflare Access service token client secret
+
+Non-secret `[vars]` in `wrangler.toml` (not `wrangler secret put` — they're not sensitive):
+
+- `GATEWAY_NAME`, `GATEWAY_ID` — as before
+- `CF_ACCESS_TEAM_DOMAIN` — `https://<your-team-name>.cloudflareaccess.com`. Used to verify the `Cf-Access-Jwt-Assertion` header on admin endpoints. Optional — if unset, those endpoints only accept the `CLOUDFLARE_API_TOKEN` bearer header (no Access-authenticated path).
+- `CF_ACCESS_AUD` — this Access app's AUD tag (Zero Trust dashboard → Access → your app → Overview). Same optionality as above.
 
 KV namespace:
 
@@ -89,6 +95,36 @@ Critical: token MUST have:
 1. `AI Gateway — Edit` (create gateway, manage spend limits, update gateway config)
 2. `AI Gateway — Read` (fetch stats)
 3. `Workers AI — Read` (call Workers AI inference)
+
+## Security
+
+### Admin gate (`requireAdmin`, `src/auth.ts`)
+
+`dualRoute()` mounts every handler at both `/demo/api/*` (behind the Access app that protects the custom domain) and `/api/*` (the public `*.workers.dev` URL — `workers_dev = true`, no Access there). Until 2026-10-28 this meant `/api/settings`, `/api/costs` (write), and `/api/stats` were reachable by literally anyone on the internet, with zero auth, able to disable the gateway's own spend/rate limits or read live cost/usage data. Found and fixed in the same session as the `fix/security-hardening` branch evaluation below.
+
+**Gated** (`requireAdmin()`, both `/api/*` and `/demo/api/*`): `/bootstrap`, `/settings`, `/costs` (POST), `/stats`.
+**Intentionally open, both mount points, no auth** — this is the documented "service identity" demo: `/chat` (POST), `/costs` (GET — just your own saved per-token rates, not secret).
+
+`requireAdmin()` passes if **either**:
+
+1. `Authorization: Bearer {CLOUDFLARE_API_TOKEN}` — compared with `timingSafeEqual()` (hash both values to a fixed size, then constant-time byte compare — see `src/auth.ts`). Covers scripts, CI, the bootstrap flow.
+2. A **cryptographically verified** `Cf-Access-Jwt-Assertion` header — `jose`'s `jwtVerify` + `createRemoteJWKSet` against `CF_ACCESS_TEAM_DOMAIN`'s JWKS, checking `issuer` and `audience` (`CF_ACCESS_AUD`). Covers human logins and service tokens authenticated through the Access app.
+
+**Why not `path.startsWith("/demo")`, or a `Host` header check?** Both are bypassable. `workers_dev = true` serves `/demo/*` on the unprotected `*.workers.dev` host too (confirmed live: `curl https://<worker>.workers.dev/demo/api/stats` returns real data with zero auth), and a client can send any `Host` header it wants over plain HTTP — Cloudflare's edge doesn't correct a mismatched one before your Worker sees it. Only a validly-signed JWT proves Access, because forging one needs Cloudflare's private signing key.
+
+If `CF_ACCESS_TEAM_DOMAIN`/`CF_ACCESS_AUD` aren't set, the Access-JWT path always fails closed — admin endpoints then only accept the bearer token, same as before this fix existed.
+
+### CSRF
+
+`app.use("*", csrf())` (Hono's built-in middleware). Low actual exposure here: every mutating endpoint requires `Content-Type: application/json` and a real JSON body, and this app sends no CORS headers — so a cross-site browser `fetch()` with JSON either never completes (blocked by the CORS preflight the server won't satisfy) or, for the simple-request content-types `csrf()` actually polices (form-urlencoded/multipart/text-plain), fails JSON parsing server-side anyway. Kept as cheap defense-in-depth for if a form-style endpoint is ever added.
+
+### Input validation (`chatHandler`)
+
+`model` required non-empty; `prompt` non-empty, capped at 4000 chars; `cache.key` capped at 512 chars and rejected if it contains control characters (CR/LF) — the Fetch API's `Headers` already rejects raw CRLF in header values, but validating here turns that into a clean 400 instead of an uncaught throw → 500; metadata string values capped at 200 chars (`validateMetadata`, pre-existing — see below).
+
+### Known-accepted residual: dev-tooling `npm audit` findings
+
+6 high-severity findings remain, all transitive through `@cloudflare/vitest-pool-workers` → `miniflare` → `sharp`/`undici`/`zod`. These simulate the Workers runtime locally for `wrangler dev`/vitest; **none of this ships in the deployed Worker bundle**. npm's only offered fix is `--force`, which downgrades `vitest-pool-workers` to 0.12.21 (older than the 0.23.0 we're on) and risks breaking the test suite for no production-facing benefit. Re-run `npm audit` periodically — Cloudflare may ship a patched `miniflare` release that resolves this forward instead of backward.
 
 ## Important Implementation Details
 
@@ -274,6 +310,7 @@ npm run deploy
 - Requires Node.js 22+ (wrangler 4.x's own requirement) — CI runs on Node 22
 - `wrangler.toml`/`wrangler.toml.example` ordering gotcha: `routes` must stay a top-level key, before any `[table]` header (`[observability]`, `[vars]`, `[[kv_namespaces]]`). TOML absorbs unbracketed keys into whichever table header precedes them — putting `[observability]` before `routes` silently drops the custom-domain routes on deploy with no error, only a warning (`Unexpected fields found in observability field: routes`). Hit and fixed this once already; keep `routes` first.
 - Workers AI models get deprecated and removed (HTTP 410) without much notice — if traffic generation suddenly 410s, check the model against `GET /accounts/{id}/ai/models/search` before assuming the Worker/gateway/Access is broken
+- See Security above for the admin-endpoint auth model and the accepted dev-tooling `npm audit` residual
 
 ## Public Template Notes
 

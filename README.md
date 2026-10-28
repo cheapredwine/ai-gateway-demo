@@ -97,6 +97,10 @@ cp wrangler.toml.example wrangler.toml
 # - Set GATEWAY_ID to your actual gateway ID (e.g. "ai-cost-demo")
 # - Create KV namespace: npx wrangler kv namespace create SETTINGS
 # - Paste the KV id into wrangler.toml
+# - Optional but recommended: uncomment CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD
+#   so Access-authenticated requests (human login or a service token through
+#   your Access app) can reach /api/settings, /api/costs (write), /api/stats
+#   without the server's own CLOUDFLARE_API_TOKEN — see AGENTS.md Security
 
 # Copy the secrets template too — wrangler types reads .dev.vars to include
 # the secret-backed vars (CLOUDFLARE_API_TOKEN etc.) in the generated Env type
@@ -276,15 +280,16 @@ Worker starts on `http://localhost:8787`.
 
 ## Troubleshooting
 
-| Symptom                                | Fix                                                                                                                                                                                              |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `KV namespace not found`               | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`.                                                                                                               |
-| `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**.                                                                                                                       |
-| `429 Too Many Requests` from chat      | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget.                                                                                        |
-| `Model not found`                      | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct-fp8`) and isn't deprecated — check the [model catalog](https://developers.cloudflare.com/workers-ai/models/). |
-| `Workers AI unauthorized`              | Add **Workers AI — Read** permission to your API token.                                                                                                                                          |
-| `WARP doesn't auto-login`              | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead.                                                                                 |
-| `Logout then re-login fails`           | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically.                                                                                |
+| Symptom                                                            | Fix                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `KV namespace not found`                                           | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`.                                                                                                                                         |
+| `Authentication error` on limits/stats                             | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**.                                                                                                                                                 |
+| `429 Too Many Requests` from chat                                  | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget.                                                                                                                  |
+| `Model not found`                                                  | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct-fp8`) and isn't deprecated — check the [model catalog](https://developers.cloudflare.com/workers-ai/models/).                           |
+| `Workers AI unauthorized`                                          | Add **Workers AI — Read** permission to your API token.                                                                                                                                                                    |
+| `WARP doesn't auto-login`                                          | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead.                                                                                                           |
+| `Logout then re-login fails`                                       | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically.                                                                                                          |
+| `401 Unauthorized` on Gateway Settings / Custom Costs save / Stats | These are admin-gated (see AGENTS.md Security). Pass through Access (gateway mode, `/demo/*`) or supply `Authorization: Bearer <CLOUDFLARE_API_TOKEN>`. Chat and reading your own saved costs stay open on the public URL. |
 
 ---
 
@@ -298,6 +303,8 @@ ai-gateway-demo/
 │   ├── index.ts                   # Hono Worker (routing + API handlers)
 │   ├── index.test.ts              # Vitest tests
 │   ├── ui.ts                      # HTML UI template (renderHtml) — all client-side JS/CSS
+│   ├── auth.ts                    # Admin-endpoint gating: timing-safe compare + Access JWT verification
+│   ├── auth.test.ts               # Vitest tests for auth.ts
 │   ├── traffic-utils.test.ts      # Vitest tests for scripts/lib/traffic-utils.ts
 │   └── api/
 │       └── cloudflare.ts          # Cloudflare REST API fetch helper

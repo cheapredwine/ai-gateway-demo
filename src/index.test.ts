@@ -919,6 +919,167 @@ describe("AI Gateway Demo", () => {
       expect(putBody.rate_limiting_limit).toBe(100);
       expect(putBody.rate_limiting_technique).toBe("fixed");
     });
+
+    it("includes collect_logs, cache_invalidate_on_update, and cache_ttl (live API requires these — confirmed against the real gateway)", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
+        }),
+      );
+      expect(typeof putBody.collect_logs).toBe("boolean");
+      expect(typeof putBody.cache_invalidate_on_update).toBe("boolean");
+      expect(typeof putBody.cache_ttl).toBe("number");
+    });
+
+    it("enabling guardrails with no prior config applies the default (FLAG-everywhere) categories", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        // GET of current gateway config — no guardrails configured yet
+        return Promise.resolve(mockRes({ result: {}, success: true }));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+            guardrailsEnabled: true,
+          }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { guardrailsEnabled: boolean };
+      expect(data.guardrailsEnabled).toBe(true);
+      expect(putBody.guardrails).toBeDefined();
+      expect(putBody.guardrails.prompt.S1).toBe("FLAG");
+      expect(putBody.guardrails.response.P1).toBe("FLAG");
+    });
+
+    it("enabling guardrails when a custom config already exists preserves it instead of overwriting with the default", async () => {
+      let putBody: any;
+      const existingGuardrails = {
+        prompt: { S1: "BLOCK", P1: "BLOCK" },
+        response: { S1: "BLOCK", P1: "BLOCK" },
+      };
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(
+          mockRes({ result: { guardrails: existingGuardrails }, success: true }),
+        );
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+            guardrailsEnabled: true,
+          }),
+        }),
+      );
+      expect(putBody.guardrails).toEqual(existingGuardrails);
+    });
+
+    it("disabling guardrails omits the guardrails key entirely (that's how the API clears it)", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(
+          mockRes({
+            result: { guardrails: { prompt: { S1: "FLAG" }, response: { S1: "FLAG" } } },
+            success: true,
+          }),
+        );
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+            guardrailsEnabled: false,
+          }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { guardrailsEnabled: boolean };
+      expect(data.guardrailsEnabled).toBe(false);
+      expect(putBody).not.toHaveProperty("guardrails");
+    });
+
+    it("preserves an existing DLP policy instead of clobbering it when updating rate limits", async () => {
+      let putBody: any;
+      const existingDlp = { enabled: true, policies: [{ id: "Policy 1", enabled: true }] };
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({ result: { dlp: existingDlp }, success: true }));
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: true, limit: 50, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
+        }),
+      );
+      expect(putBody.dlp).toEqual(existingDlp);
+    });
   });
 
   // ─── Stats ────────────────────────────────────────────────────────────────
@@ -1161,6 +1322,51 @@ describe("AI Gateway Demo", () => {
       );
       const data = (await res.json()) as { ok: boolean; spendLimit: string };
       expect(data.spendLimit).toBe("Off");
+    });
+
+    it("guardrailsEnabled is true when the gateway config has guardrails categories set", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(
+            mockRes({
+              result: { guardrails: { prompt: { S1: "FLAG" }, response: { S1: "FLAG" } } },
+              success: true,
+            }),
+          );
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
+      const data = (await res.json()) as { guardrailsEnabled: boolean };
+      expect(data.guardrailsEnabled).toBe(true);
+    });
+
+    it("guardrailsEnabled is false when the gateway has no guardrails configured", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        if (url.includes("/ai-gateway/gateways/")) {
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        return Promise.resolve(mockRes({}));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
+      const data = (await res.json()) as { guardrailsEnabled: boolean };
+      expect(data.guardrailsEnabled).toBe(false);
     });
 
     it("does not report rateLimited from nonexistent gateway config field", async () => {

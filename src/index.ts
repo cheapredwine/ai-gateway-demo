@@ -107,11 +107,67 @@ const errorMessage = (err: unknown): string => (err instanceof Error ? err.messa
 // Loosely typed on purpose — these are external API payloads, not a contract we control.
 type CfApiError = { message?: string };
 type CfApiResult<T = unknown> = { result?: T; errors?: CfApiError[] };
+// Hazard-category action map AI Gateway's Guardrails (Llama Guard) uses —
+// categories S1-S13 plus P1 (prompt injection), each "FLAG" | "BLOCK".
+// Loosely typed since we only ever pass this through unchanged or omit it.
+type GuardrailsCategories = Record<string, "FLAG" | "BLOCK">;
+type GuardrailsConfig = { prompt?: GuardrailsCategories; response?: GuardrailsCategories };
+
 type GatewayConfig = {
   cache_ttl?: number;
   rate_limiting_limit?: number;
   rate_limiting_interval?: number;
+  collect_logs?: boolean;
+  cache_invalidate_on_update?: boolean;
+  guardrails?: GuardrailsConfig;
+  dlp?: unknown;
 };
+
+// Applied the first time a user enables Guardrails with no prior config to
+// restore (e.g. after a previous disable, which clears it server-side per
+// Cloudflare's docs). FLAG (not BLOCK) everywhere — visible in logs without
+// risking an unexpected block mid-demo. P1 is prompt-injection detection.
+const DEFAULT_GUARDRAILS: GuardrailsConfig = {
+  prompt: {
+    S1: "FLAG",
+    S2: "FLAG",
+    S3: "FLAG",
+    S4: "FLAG",
+    S5: "FLAG",
+    S6: "FLAG",
+    S7: "FLAG",
+    S8: "FLAG",
+    S9: "FLAG",
+    S10: "FLAG",
+    S11: "FLAG",
+    S12: "FLAG",
+    S13: "FLAG",
+    P1: "FLAG",
+  },
+  response: {
+    S1: "FLAG",
+    S2: "FLAG",
+    S3: "FLAG",
+    S4: "FLAG",
+    S5: "FLAG",
+    S6: "FLAG",
+    S7: "FLAG",
+    S8: "FLAG",
+    S9: "FLAG",
+    S10: "FLAG",
+    S11: "FLAG",
+    S12: "FLAG",
+    S13: "FLAG",
+    P1: "FLAG",
+  },
+};
+
+const isGuardrailsOn = (guardrails: GuardrailsConfig | undefined): boolean =>
+  Boolean(
+    guardrails &&
+    (Object.keys(guardrails.prompt ?? {}).length > 0 ||
+      Object.keys(guardrails.response ?? {}).length > 0),
+  );
 type SpendLimitRule = { id: string };
 type AnalyticsGroup = {
   count?: number;
@@ -326,9 +382,27 @@ const settingsHandler = async (c: AppContext) => {
   const body = (await c.req.json()) as {
     rateLimit: { enabled: boolean; limit: number; interval: number; technique: string };
     spendLimit: { enabled: boolean; budget: number; window: string; scope: string };
+    guardrailsEnabled?: boolean;
   };
 
-  // 1. Update gateway rate limiting
+  // Read current config first: the PUT endpoint requires collect_logs,
+  // cache_invalidate_on_update, and cache_ttl (confirmed against the live
+  // API — a request without them is rejected with 7001 "Required"), and
+  // replacing the gateway without re-sending `dlp` would silently clear any
+  // existing DLP policy. Omitting `guardrails` entirely is how the API
+  // disables it, so it must be included only when staying/being turned on.
+  const currentRes = await cfApiFetch(
+    env,
+    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
+  );
+  const currentData = await currentRes.json<CfApiResult<GatewayConfig>>();
+  const current: GatewayConfig = currentRes.ok ? (currentData.result ?? {}) : {};
+
+  const guardrailsPayload = body.guardrailsEnabled
+    ? (current.guardrails ?? DEFAULT_GUARDRAILS)
+    : undefined;
+
+  // 1. Update gateway rate limiting (+ guardrails, preserving DLP/logging config)
   const gwUpdateRes = await cfApiFetch(
     env,
     `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
@@ -338,6 +412,11 @@ const settingsHandler = async (c: AppContext) => {
         rate_limiting_limit: body.rateLimit.enabled ? body.rateLimit.limit : 0,
         rate_limiting_interval: body.rateLimit.enabled ? body.rateLimit.interval : 0,
         ...(body.rateLimit.enabled ? { rate_limiting_technique: body.rateLimit.technique } : {}),
+        cache_ttl: current.cache_ttl ?? 0,
+        collect_logs: current.collect_logs ?? true,
+        cache_invalidate_on_update: current.cache_invalidate_on_update ?? false,
+        ...(current.dlp ? { dlp: current.dlp } : {}),
+        ...(guardrailsPayload ? { guardrails: guardrailsPayload } : {}),
       }),
     },
   );
@@ -383,7 +462,12 @@ const settingsHandler = async (c: AppContext) => {
   await env.SETTINGS.put("gateway_settings", JSON.stringify(body));
 
   if (!body.spendLimit.enabled) {
-    return c.json({ ok: true, note: "Rate limiting updated. Spend limits disabled.", warnings });
+    return c.json({
+      ok: true,
+      note: "Rate limiting updated. Spend limits disabled.",
+      warnings,
+      guardrailsEnabled: Boolean(guardrailsPayload),
+    });
   }
 
   // Create a spend limit rule
@@ -413,7 +497,12 @@ const settingsHandler = async (c: AppContext) => {
     if (!res.ok) {
       return c.json({ ok: false, error: data.errors?.[0]?.message || "API error" }, 502);
     }
-    return c.json({ ok: true, ruleId: data.result?.id, warnings });
+    return c.json({
+      ok: true,
+      ruleId: data.result?.id,
+      warnings,
+      guardrailsEnabled: Boolean(guardrailsPayload),
+    });
   } catch (err: unknown) {
     return c.json({ ok: false, error: errorMessage(err) }, 500);
   }
@@ -510,6 +599,7 @@ const statsHandler = async (c: AppContext) => {
       rlLimit: gw.rate_limiting_limit ?? 0,
       rlInterval: gw.rate_limiting_interval ?? 0,
       spendLimit: spendLimitOn ? "On" : "Off",
+      guardrailsEnabled: isGuardrailsOn(gw.guardrails),
       note: "Stats from Cloudflare AI Gateway Analytics.",
     });
   } catch (err: unknown) {

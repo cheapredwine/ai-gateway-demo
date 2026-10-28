@@ -10,6 +10,7 @@ Single Cloudflare Worker that serves a web UI for demonstrating AI Gateway featu
 - **Caching**: Per-request cache TTL and custom cache keys via `cf-aig-cache-ttl`
 - **Custom Metadata**: Tag requests with `cf-aig-metadata` for log filtering
 - **Identity-Aware Gateway**: Cloudflare Access + custom domain auto-injects `cf.user_id`
+- **Guardrails**: Toggle Llama Guard content moderation on/off at the gateway level — also the dominant latency factor in this demo (see Important Implementation Details)
 - **Workers AI**: All traffic routes to Cloudflare Workers AI models via the REST API
 
 ## Architecture
@@ -181,12 +182,20 @@ Body:
 
 ### Gateway Settings API
 
-Rate limiting is updated via PUT to the gateway:
+Rate limiting (and guardrails, see below) are updated via PUT to the gateway. **The live API requires `collect_logs`, `cache_invalidate_on_update`, and `cache_ttl`** — confirmed directly against the real API (2026-10-28): a request without them is rejected with `7001 Required`/`Expected number, received nan`. This isn't documented as a breaking change anywhere; it was just discovered by testing. `settingsHandler` now does a GET of the current gateway config first specifically to source these (and to preserve `dlp`, which would otherwise be silently cleared — PUT replaces the gateway's config, it does not partial-merge fields you don't send):
 
 ```
+GET /client/v4/accounts/{account_id}/ai-gateway/gateways/{gateway_name}   # read current config first
 PUT /client/v4/accounts/{account_id}/ai-gateway/gateways/{gateway_name}
 Body:
-  { rate_limiting_limit: 100, rate_limiting_interval: 60, rate_limiting_technique: "fixed" }
+  {
+    rate_limiting_limit: 100, rate_limiting_interval: 60, rate_limiting_technique: "fixed",
+    cache_ttl: <preserved from GET, default 0>,
+    collect_logs: <preserved from GET, default true>,
+    cache_invalidate_on_update: <preserved from GET, default false>,
+    dlp: <preserved from GET if present — omitting it clears any existing DLP policy>,
+    guardrails: <see below — omitting this key is how you disable Guardrails>
+  }
 ```
 
 Spend limits are created via:
@@ -196,6 +205,16 @@ POST /client/v4/accounts/{account_id}/ai-gateway/gateways/{gateway_name}/spend-l
 Body:
   { budget: 1.0, window: "1d", dimensions: {} }
 ```
+
+### Guardrails Toggle
+
+Simple on/off (no per-category UI) via the same `/api/settings` PUT as rate limiting — see `requireAdmin`/`src/auth.ts` for why this is admin-gated. `settingsHandler` in `src/index.ts`:
+
+- **Enabling**: if the gateway already has a `guardrails` config (read via the pre-fetch GET above), re-sends it unchanged — never overwrites a previously fine-tuned hazard-category setup. If there's no existing config (first enable, or re-enabling after a disable), falls back to `DEFAULT_GUARDRAILS`: every category (`S1`-`S13`, `P1`) set to `FLAG` on both prompt and response — visible in logs, not silently blocking, safer for a live demo.
+- **Disabling**: omits the `guardrails` key from the PUT body entirely. Per Cloudflare's docs, that's what clears it server-side — there's no explicit `{enabled: false}` shape. This means a disable **discards** any hazard-category tuning; re-enabling later starts from `DEFAULT_GUARDRAILS`, not whatever was there before.
+- `GET /api/stats` (`statsHandler`) exposes the gateway's actual current state as `guardrailsEnabled: boolean` (`isGuardrailsOn()` — true if `guardrails.prompt` or `guardrails.response` has any keys), and the UI's `loadStats()` syncs the checkbox to match on every load.
+
+**Why this exists:** confirmed live that Guardrails — not model choice — is the dominant latency factor in this demo. Guardrails runs Llama Guard 3 8B as separate inference calls to evaluate the prompt and (separately) the response, on top of whatever chat model is selected. Measured directly against `ai-cost-demo`: a short request went from **~700ms with Guardrails off to 6-15+ seconds with it on** (8-20x), and that gap held across every model tested (1B through 8B) — Cloudflare's own docs estimate "~500ms per evaluation," and there are at least two evaluations per request (prompt + response), more for longer content that gets chunked. If a future report says the demo "is still slow" after already picking a small model, check Guardrails before anything else.
 
 ### Identity-Aware Gateway
 

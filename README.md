@@ -128,13 +128,13 @@ Visit `https://<your-gateway-domain>/demo` to open the web client (requires Acce
 
 ## Web UI Panels
 
-| Panel                      | Purpose                                                                                                                                                                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Traffic Generator**      | Send single or burst chat requests to Workers AI through the gateway. Choose from 19 pre-populated models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
-| **Custom Costs**           | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request.                                                                                           |
-| **Gateway Settings**       | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API.                                               |
-| **Gateway Stats**          | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status).                                                                        |
-| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights.                                                                                        |
+| Panel                      | Purpose                                                                                                                                                                                                                                                                                        |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Traffic Generator**      | Send single or burst chat requests to Workers AI through the gateway. Choose from 20 pre-populated models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request.                                                                                         |
+| **Custom Costs**           | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request.                                                                                                                                                                                   |
+| **Gateway Settings**       | Configure gateway-level **rate limits** (requests per window, fixed/sliding), **spend limits** (budget + time window + scope), and **Guardrails** (Llama Guard content moderation on/off) via the Cloudflare API. Guardrails is also the dominant latency factor in this demo — see AGENTS.md. |
+| **Gateway Stats**          | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status).                                                                                                                                                                |
+| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights.                                                                                                                                                                                |
 
 ---
 
@@ -186,6 +186,14 @@ Tag requests with key-value pairs via `cf-aig-metadata`. Metadata appears in AI 
 ### Spend Limits
 
 Gateway-level budget enforcement. When cumulative estimated spend hits the budget, AI Gateway returns **HTTP 429**.
+
+### Guardrails
+
+Toggle Llama Guard content moderation on/off for the gateway from the **Gateway Settings** panel. When enabled, every request gets screened by Llama Guard 3 8B as a separate inference call (prompt and response evaluated independently), on top of whatever model you picked for the actual chat completion.
+
+> **This is the demo's dominant latency factor — not model choice.** Measured directly: a request went from ~700ms with Guardrails off to 6-15+ seconds with it on, regardless of which chat model was selected. If responses feel slow, check this toggle before switching models.
+
+Enabling re-applies your existing hazard-category configuration if the gateway already has one; otherwise it defaults to `FLAG` on every category (visible in logs, not silently blocking). Disabling clears the configuration entirely — that's how the underlying API works, not a limitation of this demo.
 
 ### Identity-Aware Gateway
 

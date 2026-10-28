@@ -332,6 +332,34 @@ for log in json.load(sys.stdin).get('result', [])[:3]:
 
 ---
 
+## Part 9: Guardrails (Content Moderation)
+
+**Goal:** Show AI Gateway screening prompts and responses for unsafe content with Llama Guard — and the real latency cost of doing so.
+
+> **Admin-gated:** same as Rate Limiting/Spend Limits — demo from gateway mode, or supply the bearer token (see AGENTS.md Security).
+
+### 9.1 Measure the baseline (guardrails off)
+
+1. In **Gateway Settings**, confirm **Enable content moderation (Llama Guard)** is unchecked
+2. Click **Apply All to Gateway**
+3. Send a chat request, note the response time
+
+### 9.2 Turn guardrails on and compare
+
+1. Check **Enable content moderation (Llama Guard)**
+2. Click **Apply All to Gateway**
+3. Send the same request again — noticeably slower
+
+> **What's happening:** Guardrails runs Llama Guard 3 8B as a _separate inference call_ to evaluate the prompt, and another separate call to evaluate the response — on top of whatever model you picked for the actual chat completion. Measured directly against this gateway: a simple request went from **~700ms with guardrails off to 6-15+ seconds with it on** — an 8-20x difference, and that gap exists regardless of which chat model is selected. Cloudflare's own docs put the added cost at "~500ms per evaluation," but that's per evaluation — prompt and response are each evaluated separately, and longer content gets chunked into multiple evaluations.
+>
+> **Key point for the demo:** If someone asks "why is this slow," the answer is almost never "pick a smaller model" — it's "check whether Guardrails is on." Model choice barely matters once Guardrails is in the loop; disabling it is the lever that actually matters for latency.
+
+### 9.3 Trigger a flag (optional, be careful what you type live)
+
+The gateway's default hazard categories are set to `FLAG` (visible in logs, not blocking), except prompt-injection (`P1`) which may be set to `BLOCK` depending on configuration. A flagged request still completes normally; check the gateway logs in the dashboard to see the Guardrails evaluation result recorded alongside the request.
+
+---
+
 ## Summary: Identity Comparison
 
 |                           | Human (Gateway Mode)           | Service (Worker Proxy)        |

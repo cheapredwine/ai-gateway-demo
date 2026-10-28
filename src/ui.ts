@@ -118,6 +118,7 @@ export function renderHtml(opts: UiOptions): string {
         <label>Workers AI Model</label>
         <select id="model" onchange="onModelChange()">
           <optgroup label="Meta Llama">
+            <option value="@cf/meta/llama-3.2-1b-instruct">Llama 3.2 1B Instruct (Tiniest/Cheapest)</option>
             <option value="@cf/meta/llama-3.1-8b-instruct-fp8">Llama 3.1 8B FP8</option>
             <option value="@cf/meta/llama-3.2-3b-instruct" selected>Llama 3.2 3B Instruct (Fast)</option>
             <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B FP8 Fast</option>
@@ -250,7 +251,7 @@ export function renderHtml(opts: UiOptions): string {
         </div>
 
         <h3 style="font-size:0.85rem;color:#94a3b8;margin-top:1rem;margin-bottom:0.5rem">Live Gateway Config</h3>
-        <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr">
+        <div class="stats-grid" style="grid-template-columns: 1fr 1fr 1fr 1fr">
           <div class="stat-box">
             <div class="stat-value" style="font-size:1rem" id="statCacheTTL">-</div>
             <div class="stat-label">Cache TTL</div>
@@ -262,6 +263,10 @@ export function renderHtml(opts: UiOptions): string {
           <div class="stat-box">
             <div class="stat-value" style="font-size:1rem" id="statSpendLimit">-</div>
             <div class="stat-label">Spend Limit</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-value" style="font-size:1rem" id="statGuardrails">-</div>
+            <div class="stat-label">Guardrails</div>
           </div>
         </div>
 
@@ -310,6 +315,15 @@ export function renderHtml(opts: UiOptions): string {
           <option value="model">Per model</option>
           <option value="provider">Per provider</option>
         </select>
+
+        <hr style="border-color:#334155;margin:1rem 0">
+
+        <h3 style="font-size:0.9rem;color:#94a3b8;margin:0.5rem 0">Guardrails</h3>
+        <div class="toggle">
+          <input type="checkbox" id="guardrailsEnabled">
+          <label for="guardrailsEnabled" style="margin:0">Enable content moderation (Llama Guard)</label>
+        </div>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Screens prompts and responses for unsafe content. Adds real latency — Llama Guard evaluates the prompt <em>and</em> the response as separate inference calls on top of your chat model, typically ~500ms+ each. Disable for a fast demo; enable to show the safety feature.</p>
 
         <button onclick="saveGatewaySettings()">Apply All to Gateway</button>
         <div id="limitMessage"></div>
@@ -628,17 +642,20 @@ export function renderHtml(opts: UiOptions): string {
       const budget = parseFloat(document.getElementById("limitBudget").value);
       const window = document.getElementById("limitWindow").value;
       const scope = document.getElementById("limitScope").value;
+      const guardrailsEnabled = document.getElementById("guardrailsEnabled").checked;
       try {
         const res = await fetch(\`\${API}/api/settings\`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             rateLimit: { enabled: rlEnabled, limit: rlLimit, interval: rlInterval, technique: rlTechnique },
-            spendLimit: { enabled: limitEnabled, budget, window, scope }
+            spendLimit: { enabled: limitEnabled, budget, window, scope },
+            guardrailsEnabled
           })
         });
         const data = await res.json();
         show("limitMessage", data.ok ? "Gateway settings applied." : "Error: " + data.error, data.ok ? "success" : "error");
+        if (data.ok) loadStats();
       } catch (e) {
         show("limitMessage", "Error: " + e.message, "error");
       }
@@ -657,6 +674,8 @@ export function renderHtml(opts: UiOptions): string {
           document.getElementById("statCacheTTL").textContent = data.cacheTTL ?? "-";
           document.getElementById("statRLLimit").textContent = data.rlLimit ?? "-";
           document.getElementById("statSpendLimit").textContent = data.spendLimit ?? "-";
+          document.getElementById("statGuardrails").textContent = data.guardrailsEnabled ? "On" : "Off";
+          document.getElementById("guardrailsEnabled").checked = Boolean(data.guardrailsEnabled);
           document.getElementById("statsDetail").textContent = data.note || "";
         } else {
           document.getElementById("statsDetail").textContent = "Error: " + (data.error || "Unknown");

@@ -1,7 +1,13 @@
 name = "ai-gateway-demo-worker"
 main = "src/index.ts"
-compatibility_date = "2025-07-01"
+compatibility_date = "2026-10-27"
 # account_id = "your_account_id"
+
+# Logs/traces for debugging a deployed Worker — see
+# https://developers.cloudflare.com/workers/wrangler/configuration/#observability
+[observability]
+enabled = true
+head_sampling_rate = 1
 
 # Worker routes on your gateway custom domain (for Identity-Aware Gateway)
 # Also enable workers_dev = true to get the Worker proxy URL for service token demos

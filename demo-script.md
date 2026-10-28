@@ -148,10 +148,13 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 1. Check **Use Cache**
 2. Set TTL to `300` (5 minutes)
 3. Optionally set a custom cache key
-4. Send the same prompt twice
-5. First response: `cache MISS`
-6. Second response: `cache HIT`
+4. Click **Send Request**, wait for the response to finish
+5. Click **Send Request** again with the identical prompt
+6. First response: `cache MISS`
+7. Second response: `cache HIT`
 
+> **Important — use Send Request, not Send Burst, and wait between clicks:** Caching only works across _sequential, completed_ requests. Two identical requests fired at the same time (a double-click before the first response returns, or **Send Burst**, which fires all 5 at once via `Promise.all`) will **both show MISS** — there's no completed response yet for either one to reuse. This isn't a bug; it's how a distributed cache behaves when nothing has finished writing to it yet. The UI disables both buttons while a request is in flight specifically to prevent an accidental double-click from producing this exact false negative mid-demo.
+>
 > **What's happening:** The Worker sends `cf-aig-cache-ttl: 300`. The AI Gateway caches the response. Identical requests within the TTL window are served from cache — no upstream call, no token cost.
 
 ### 4.2 Bypass cache

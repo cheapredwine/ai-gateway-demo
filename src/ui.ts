@@ -218,8 +218,9 @@ export function renderHtml(opts: UiOptions): string {
           </div>
         </div>
 
-        <button onclick="sendChat()">Send Request</button>
-        <button class="secondary" onclick="sendBurst()">Send Burst (5x)</button>
+        <button id="sendBtn" onclick="sendChat()">Send Request</button>
+        <button id="sendBurstBtn" class="secondary" onclick="sendBurst()">Send Burst (5x)</button>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">To demo caching: use <strong>Send Request</strong> twice, waiting for each response. <strong>Send Burst</strong> fires all 5 requests at once — none of them can hit the cache yet, so a burst always shows MISS even with caching enabled.</p>
 
         <div id="chatOutput" class="chat-area muted">Responses will appear here...</div>
       </div>
@@ -398,6 +399,15 @@ export function renderHtml(opts: UiOptions): string {
 
     newSessionId();
 
+    // Guards against overlapping sendChat() calls — e.g. an impatient
+    // double-click on "Send Request" before the first response returns.
+    // Without this, two "identical" requests race the upstream concurrently
+    // and BOTH show cache MISS, since neither's response is cached yet when
+    // the other reaches the gateway. This is not a caching bug: it's
+    // inherent to how a distributed cache behaves when nothing has
+    // completed yet to populate it. See demo-script.md Part 4.
+    let sendInFlight = false;
+
     function log(msg, type="info") {
       const el = document.getElementById("chatOutput");
       const time = new Date().toLocaleTimeString();
@@ -445,113 +455,129 @@ export function renderHtml(opts: UiOptions): string {
     }
 
     async function sendChat(count=1) {
-      const modelSel = document.getElementById("model").value;
-      const model = modelSel === "custom" ? document.getElementById("customModel").value : modelSel;
-      const prompt = document.getElementById("prompt").value;
-      const useCustom = document.getElementById("useCustomCost").checked;
-      const costIn = parseFloat(document.getElementById("costIn").value);
-      const costOut = parseFloat(document.getElementById("costOut").value);
-      const useCache = document.getElementById("useCache").checked;
-      const cacheTTL = parseInt(document.getElementById("cacheTTL").value, 10);
-      const cacheKey = document.getElementById("cacheKey").value;
-      const skipCache = document.getElementById("skipCache").checked;
-      const useMetadata = document.getElementById("useMetadata").checked;
-      const metaKey = document.getElementById("metaKey").value;
-      const metaValue = document.getElementById("metaValue").value;
-      const sessionId = document.getElementById("sessionId").value;
+      if (sendInFlight) {
+        log("A request is already in progress — wait for it to finish before sending again (needed to demo caching correctly; see the note above the buttons).", "warning");
+        return;
+      }
+      sendInFlight = true;
+      const sendBtn = document.getElementById("sendBtn");
+      const sendBurstBtn = document.getElementById("sendBurstBtn");
+      sendBtn.disabled = true;
+      sendBurstBtn.disabled = true;
 
-      const buildMetadata = () => {
-        const m = { session_id: sessionId };
-        if (useMetadata && metaKey) m[metaKey] = metaValue;
-        return m;
-      };
+      try {
+        const modelSel = document.getElementById("model").value;
+        const model = modelSel === "custom" ? document.getElementById("customModel").value : modelSel;
+        const prompt = document.getElementById("prompt").value;
+        const useCustom = document.getElementById("useCustomCost").checked;
+        const costIn = parseFloat(document.getElementById("costIn").value);
+        const costOut = parseFloat(document.getElementById("costOut").value);
+        const useCache = document.getElementById("useCache").checked;
+        const cacheTTL = parseInt(document.getElementById("cacheTTL").value, 10);
+        const cacheKey = document.getElementById("cacheKey").value;
+        const skipCache = document.getElementById("skipCache").checked;
+        const useMetadata = document.getElementById("useMetadata").checked;
+        const metaKey = document.getElementById("metaKey").value;
+        const metaValue = document.getElementById("metaValue").value;
+        const sessionId = document.getElementById("sessionId").value;
 
-      const sendOne = async (i) => {
-        log(\`Sending #\${i+1} to \${model} [session: \${sessionId}]...\`, "info");
-        try {
-          if (onGateway) {
-            // Gateway mode: call /compat/chat/completions directly (Access injects cf.user_id)
-            const headers = { "Content-Type": "application/json" };
-            if (useCustom) {
-              headers["cf-aig-custom-cost"] = JSON.stringify({ per_token_in: costIn, per_token_out: costOut });
-            }
-            if (useCache) {
-              if (skipCache) {
-                headers["cf-aig-skip-cache"] = "true";
+        const buildMetadata = () => {
+          const m = { session_id: sessionId };
+          if (useMetadata && metaKey) m[metaKey] = metaValue;
+          return m;
+        };
+
+        const sendOne = async (i) => {
+          log(\`Sending #\${i+1} to \${model} [session: \${sessionId}]...\`, "info");
+          try {
+            if (onGateway) {
+              // Gateway mode: call /compat/chat/completions directly (Access injects cf.user_id)
+              const headers = { "Content-Type": "application/json" };
+              if (useCustom) {
+                headers["cf-aig-custom-cost"] = JSON.stringify({ per_token_in: costIn, per_token_out: costOut });
+              }
+              if (useCache) {
+                if (skipCache) {
+                  headers["cf-aig-skip-cache"] = "true";
+                } else {
+                  headers["cf-aig-cache-ttl"] = String(cacheTTL);
+                  if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;
+                }
+              }
+              if (useMetadata && metaKey) {
+                headers["cf-aig-metadata"] = JSON.stringify(buildMetadata());
               } else {
-                headers["cf-aig-cache-ttl"] = String(cacheTTL);
-                if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;
+                headers["cf-aig-metadata"] = JSON.stringify({ session_id: sessionId });
+              }
+              const res = await fetch("/compat/chat/completions", {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  model: "workers-ai/" + model,
+                  messages: [{ role: "user", content: prompt }]
+                })
+              });
+              const data = await res.json();
+              if (res.status === 429) {
+                log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
+              } else if (res.ok) {
+                const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
+                const cacheStatus = res.headers.get("cf-aig-cache-status");
+                const cacheStr = cacheStatus ? \` | cache \${cacheStatus}\` : "";
+                let costStr = "?";
+                if (useCustom && data.usage) {
+                  const est = (data.usage.prompt_tokens ?? 0) * costIn + (data.usage.completion_tokens ?? 0) * costOut;
+                  costStr = "$" + est.toFixed(6);
+                }
+                log(\`OK \${tokens} tokens | est cost \${costStr}\${cacheStr} | \${data.model || model}\`, "success");
+                const content = data.choices?.[0]?.message?.content;
+                if (content) log(\`  > \${content}\`, "info");
+              } else {
+                log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
+              }
+            } else {
+              // Worker mode: proxy through /api/chat (service token auth)
+              const headers = { "Content-Type": "application/json" };
+              if (useCustom) {
+                headers["x-custom-cost-in"] = costIn;
+                headers["x-custom-cost-out"] = costOut;
+              }
+              const res = await fetch(\`\${API}/api/chat\`, {
+                method: "POST",
+                headers,
+                body: JSON.stringify({
+                  model,
+                  prompt,
+                  cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
+                  metadata: buildMetadata()
+                })
+              });
+              const data = await res.json();
+              if (res.status === 429) {
+                log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
+              } else if (res.ok) {
+                const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
+                const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
+                const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
+                log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
+                const content = data.choices?.[0]?.message?.content;
+                if (content) log(\`  > \${content}\`, "info");
+              } else {
+                log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
               }
             }
-            if (useMetadata && metaKey) {
-              headers["cf-aig-metadata"] = JSON.stringify(buildMetadata());
-            } else {
-              headers["cf-aig-metadata"] = JSON.stringify({ session_id: sessionId });
-            }
-            const res = await fetch("/compat/chat/completions", {
-              method: "POST",
-              headers,
-              body: JSON.stringify({
-                model: "workers-ai/" + model,
-                messages: [{ role: "user", content: prompt }]
-              })
-            });
-            const data = await res.json();
-            if (res.status === 429) {
-              log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
-            } else if (res.ok) {
-              const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
-              const cacheStatus = res.headers.get("cf-aig-cache-status");
-              const cacheStr = cacheStatus ? \` | cache \${cacheStatus}\` : "";
-              let costStr = "?";
-              if (useCustom && data.usage) {
-                const est = (data.usage.prompt_tokens ?? 0) * costIn + (data.usage.completion_tokens ?? 0) * costOut;
-                costStr = "$" + est.toFixed(6);
-              }
-              log(\`OK \${tokens} tokens | est cost \${costStr}\${cacheStr} | \${data.model || model}\`, "success");
-              const content = data.choices?.[0]?.message?.content;
-              if (content) log(\`  > \${content}\`, "info");
-            } else {
-              log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
-            }
-          } else {
-            // Worker mode: proxy through /api/chat (service token auth)
-            const headers = { "Content-Type": "application/json" };
-            if (useCustom) {
-              headers["x-custom-cost-in"] = costIn;
-              headers["x-custom-cost-out"] = costOut;
-            }
-            const res = await fetch(\`\${API}/api/chat\`, {
-              method: "POST",
-              headers,
-              body: JSON.stringify({
-                model,
-                prompt,
-                cache: useCache ? { ttl: cacheTTL, key: cacheKey || undefined, skip: skipCache } : undefined,
-                metadata: buildMetadata()
-              })
-            });
-            const data = await res.json();
-            if (res.status === 429) {
-              log(\`BLOCKED: Gateway limit exceeded (429)\`, "error");
-            } else if (res.ok) {
-              const tokens = data.usage ? (data.usage.total_tokens || "?") : "?";
-              const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
-              const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
-              log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
-              const content = data.choices?.[0]?.message?.content;
-              if (content) log(\`  > \${content}\`, "info");
-            } else {
-              log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
-            }
+          } catch (e) {
+            log("Network error: " + e.message, "error");
           }
-        } catch (e) {
-          log("Network error: " + e.message, "error");
-        }
-      };
+        };
 
-      await Promise.all(Array.from({ length: count }, (_, i) => sendOne(i)));
-      log(\`Done — \${count} request\${count === 1 ? "" : "s"} complete.\`, "info");
+        await Promise.all(Array.from({ length: count }, (_, i) => sendOne(i)));
+        log(\`Done — \${count} request\${count === 1 ? "" : "s"} complete.\`, "info");
+      } finally {
+        sendInFlight = false;
+        sendBtn.disabled = false;
+        sendBurstBtn.disabled = false;
+      }
     }
 
     function sendBurst() { sendChat(5); }

@@ -338,7 +338,7 @@ for log in json.load(sys.stdin).get('result', [])[:3]:
 
 > **Admin-gated:** same as Rate Limiting/Spend Limits — demo from gateway mode, or supply the bearer token (see AGENTS.md Security).
 
-> **Immediate effect:** the Guardrails checkbox has its own dedicated endpoint (`/api/guardrails`) and applies the instant you click it — no need to also click **Apply All to Gateway** (that button is only for rate limits/spend limits). A **Guardrails: On/Off** badge next to the gateway name at the top of the page always reflects the live state.
+> **Immediate effect:** the Guardrails checkbox has its own dedicated endpoint (`/api/guardrails`) and applies the instant you click it — the checkbox label even says "applies immediately". The **Apply Rate & Spend Limits** button below it does not touch Guardrails (it's only for rate limits/spend limits). A **Guardrails: On/Off** badge next to the gateway name at the top of the page flips to "…" while the change is being applied, then to the live state; a persistent confirmation message appears under the checkbox (it does not auto-dismiss).
 
 ### 9.1 Measure the baseline (guardrails off)
 

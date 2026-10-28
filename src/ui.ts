@@ -321,12 +321,12 @@ export function renderHtml(opts: UiOptions): string {
         <h3 style="font-size:0.9rem;color:#94a3b8;margin:0.5rem 0">Guardrails</h3>
         <div class="toggle">
           <input type="checkbox" id="guardrailsEnabled" onchange="toggleGuardrails()">
-          <label for="guardrailsEnabled" style="margin:0">Enable content moderation (Llama Guard)</label>
+          <label for="guardrailsEnabled" style="margin:0">Enable content moderation (Llama Guard) — applies immediately</label>
         </div>
-        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Screens prompts and responses for unsafe content. Adds real latency — Llama Guard evaluates the prompt <em>and</em> the response as separate inference calls on top of your chat model, typically ~500ms+ each. Disable for a fast demo; enable to show the safety feature. Takes effect immediately — no need to click Apply below.</p>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Screens prompts and responses for unsafe content. Adds real latency — Llama Guard evaluates the prompt <em>and</em> the response as separate inference calls on top of your chat model, typically ~500ms+ each. Disable for a fast demo; enable to show the safety feature. Takes effect the moment you click — the <strong>Apply Rate &amp; Spend Limits</strong> button below does not touch Guardrails.</p>
         <div id="guardrailsMessage"></div>
 
-        <button onclick="saveGatewaySettings()">Apply All to Gateway</button>
+        <button onclick="saveGatewaySettings()">Apply Rate &amp; Spend Limits</button>
         <div id="limitMessage"></div>
       </div>
 
@@ -446,14 +446,17 @@ export function renderHtml(opts: UiOptions): string {
         });
     }
 
-    function show(id, msg, type="success") {
+    function show(id, msg, type="success", timeoutMs=5000) {
       const el = document.getElementById(id);
       el.innerHTML = "";
       const div = document.createElement("div");
       div.className = "message " + type;
       div.textContent = msg;
       el.appendChild(div);
-      setTimeout(() => el.innerHTML = "", 5000);
+      // timeoutMs=0 keeps the message up until the next show() on this id —
+      // used for toggles whose confirmation is the only durable feedback
+      // (transient auto-clear read as "it appeared then vanished").
+      if (timeoutMs > 0) setTimeout(() => el.innerHTML = "", timeoutMs);
     }
 
     function onModelChange() {
@@ -653,7 +656,7 @@ export function renderHtml(opts: UiOptions): string {
           })
         });
         const data = await res.json();
-        show("limitMessage", data.ok ? "Gateway settings applied." : "Error: " + data.error, data.ok ? "success" : "error");
+        show("limitMessage", data.ok ? "Rate & spend limits applied." : "Error: " + data.error, data.ok ? "success" : "error");
         if (data.ok) loadStats();
       } catch (e) {
         show("limitMessage", "Error: " + e.message, "error");
@@ -664,10 +667,30 @@ export function renderHtml(opts: UiOptions): string {
     // saveGatewaySettings) so flipping this one switch takes effect
     // immediately, without re-applying whatever rate-limit/spend-limit
     // values happen to be sitting in the form at the time.
+    //
+    // Deliberately does NOT call loadStats() afterward: that would reset
+    // every stat box to "..." and fire a second slow fetch (the stats
+    // endpoint includes an analytics query), which made the toggle feel
+    // sluggish. The toggle response already carries the authoritative new
+    // state, so the badge and Stats-panel box are updated directly from it.
+    function setGuardrailsDisplay(enabled) {
+      const badge = document.getElementById("guardrailsBadge");
+      badge.textContent = enabled ? "On" : "Off";
+      badge.style.color = enabled ? "#22c55e" : "#94a3b8";
+      document.getElementById("statGuardrails").textContent = enabled ? "On" : "Off";
+      document.getElementById("guardrailsEnabled").checked = enabled;
+    }
+
     async function toggleGuardrails() {
       const checkbox = document.getElementById("guardrailsEnabled");
       const enabled = checkbox.checked;
       checkbox.disabled = true;
+      // Instant feedback: the server does a GET + PUT against the Cloudflare
+      // API (1-3s), so show activity immediately instead of a frozen UI.
+      const badge = document.getElementById("guardrailsBadge");
+      badge.textContent = "...";
+      badge.style.color = "#eab308";
+      show("guardrailsMessage", "Updating Guardrails" + (enabled ? " (on)" : " (off)") + "...", "success", 0);
       try {
         const res = await fetch(\`\${API}/api/guardrails\`, {
           method: "POST",
@@ -676,17 +699,17 @@ export function renderHtml(opts: UiOptions): string {
         });
         const data = await res.json();
         if (data.ok) {
-          show("guardrailsMessage", "Guardrails " + (data.guardrailsEnabled ? "enabled" : "disabled") + ".", "success");
+          setGuardrailsDisplay(Boolean(data.guardrailsEnabled));
+          show("guardrailsMessage", "Guardrails " + (data.guardrailsEnabled ? "enabled" : "disabled") + ".", "success", 0);
         } else {
-          checkbox.checked = !enabled;
-          show("guardrailsMessage", "Error: " + data.error, "error");
+          setGuardrailsDisplay(!enabled);
+          show("guardrailsMessage", "Error: " + data.error, "error", 0);
         }
       } catch (e) {
-        checkbox.checked = !enabled;
-        show("guardrailsMessage", "Error: " + e.message, "error");
+        setGuardrailsDisplay(!enabled);
+        show("guardrailsMessage", "Error: " + e.message, "error", 0);
       } finally {
         checkbox.disabled = false;
-        loadStats();
       }
     }
 
@@ -703,11 +726,7 @@ export function renderHtml(opts: UiOptions): string {
           document.getElementById("statCacheTTL").textContent = data.cacheTTL ?? "-";
           document.getElementById("statRLLimit").textContent = data.rlLimit ?? "-";
           document.getElementById("statSpendLimit").textContent = data.spendLimit ?? "-";
-          document.getElementById("statGuardrails").textContent = data.guardrailsEnabled ? "On" : "Off";
-          document.getElementById("guardrailsEnabled").checked = Boolean(data.guardrailsEnabled);
-          const badge = document.getElementById("guardrailsBadge");
-          badge.textContent = data.guardrailsEnabled ? "On" : "Off";
-          badge.style.color = data.guardrailsEnabled ? "#22c55e" : "#94a3b8";
+          setGuardrailsDisplay(Boolean(data.guardrailsEnabled));
           document.getElementById("statsDetail").textContent = data.note || "";
         } else {
           document.getElementById("statsDetail").textContent = "Error: " + (data.error || "Unknown");

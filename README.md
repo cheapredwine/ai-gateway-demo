@@ -193,7 +193,7 @@ Toggle Llama Guard content moderation on/off for the gateway from the **Gateway 
 
 > **This is the demo's dominant latency factor — not model choice.** Measured directly: a request went from ~700ms with Guardrails off to 6-15+ seconds with it on, regardless of which chat model was selected. If responses feel slow, check this toggle before switching models.
 
-Enabling re-applies your existing hazard-category configuration if the gateway already has one; otherwise it defaults to `FLAG` on every category (visible in logs, not silently blocking). Disabling clears the configuration entirely — that's how the underlying API works, not a limitation of this demo.
+Enabling re-applies your existing hazard-category configuration if the gateway already has one; otherwise it defaults to `FLAG` on every category (visible in logs, not silently blocking). Disabling clears the configuration entirely — that's how the underlying API works, not a limitation of this demo. Every chat response also reports real **Guardrails activity** — the gateway logs each Llama Guard evaluation as its own sub-request, and the UI shows `🛡 Guardrails: N evaluations (+X.Xs)` per request so the latency cost is visible where it happens. Note: after toggling Guardrails, give the edge ~2-3 seconds to pick up the config change before testing — a request fired immediately after enabling can still run without Guardrails.
 
 ### Identity-Aware Gateway
 

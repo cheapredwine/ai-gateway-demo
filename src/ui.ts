@@ -87,7 +87,7 @@ export function renderHtml(opts: UiOptions): string {
     }
     .success { color: #22c55e; }
     .error { color: #ef4444; }
-    .warning { color: #f59e0b; }
+    .warning, .warn { color: #f59e0b; }
     .info { color: #3b82f6; }
     .muted { color: #64748b; font-size: 0.8rem; }
     .cost-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
@@ -580,6 +580,12 @@ export function renderHtml(opts: UiOptions): string {
                 const cost = data.estimatedCost !== undefined ? "$" + data.estimatedCost.toFixed(6) : "?";
                 const cacheStatus = data.cacheStatus ? \` | cache \${data.cacheStatus}\` : "";
                 log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
+                // Real guardrails activity, as reported by the gateway logs:
+                // each Llama Guard evaluation is a separate logged sub-request.
+                const gw = data.guardrails;
+                if (gw && gw.evaluations > 0) {
+                  log(\`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\`, "warn");
+                }
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
               } else {

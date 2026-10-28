@@ -340,6 +340,7 @@ const chatHandler = async (c: AppContext) => {
 
   try {
     // 30s — LLM inference can be slow (large models, cold starts); 15s kills valid requests
+    const requestStartedAtMs = Date.now();
     const res = await fetch(upstreamUrl, {
       method: "POST",
       headers: upstreamHeaders,
@@ -364,6 +365,12 @@ const chatHandler = async (c: AppContext) => {
       estimatedCost = inTokens * customCost.per_token_in + outTokens * customCost.per_token_out;
     }
 
+    // Enrich with what actually ran for this request: Llama Guard
+    // evaluations are logged as their own sub-requests when Guardrails is
+    // on, so we can show real guardrails activity (count + added latency)
+    // alongside the model output. Best-effort — never fails the chat.
+    const guardrails = res.ok ? await fetchGuardrailsActivity(env, requestStartedAtMs) : undefined;
+
     return c.json(
       {
         ok: res.ok,
@@ -372,6 +379,7 @@ const chatHandler = async (c: AppContext) => {
         usage: data.usage,
         estimatedCost,
         cacheStatus,
+        guardrails,
         choices: data.choices,
         error: data.error?.message || data.errors?.[0]?.message,
       },
@@ -381,6 +389,68 @@ const chatHandler = async (c: AppContext) => {
     return c.json({ ok: false, error: errorMessage(err) }, 500);
   }
 };
+// ─── API: Guardrails activity ─────────────────────────────────────────────────
+
+// Shape of one entry from the gateway logs API. Loosely typed — external
+// API payload, only the fields we read are declared. Verified live
+// (2026-10-28): Llama Guard evaluations are logged as separate entries with
+// request_type "llama-guard", model @cf/meta/llama-guard-3-8b, their own
+// duration/tokens, and a created_at timestamp within the chat request's
+// window. The verdict fields (score/guardrails) stay empty for FLAG-mode
+// safe requests — populated only when something is flagged/blocked.
+type GatewayLogEntry = {
+  created_at?: string;
+  request_type?: string;
+  duration?: number;
+  tokens_in?: number;
+  tokens_out?: number;
+};
+
+type GuardrailsActivity = {
+  evaluations: number;
+  totalMs: number;
+  entries: Array<{ duration: number; tokens_in: number; created_at?: string }>;
+};
+
+// Best-effort lookup of the Llama Guard evaluations that ran for one chat
+// request. Correlated by time window, not by event id — the chat response
+// carries no event-id header (verified live), and the gateway's own event_id
+// isn't exposed to the caller, so "llama-guard entries logged since this
+// request started" is the best available signal. Two-second back-dating
+// covers clock/ingest skew between the edge and the logs API.
+export async function fetchGuardrailsActivity(
+  env: Env,
+  requestStartedAtMs: number,
+): Promise<GuardrailsActivity | undefined> {
+  const windowStartMs = requestStartedAtMs - 2000;
+  try {
+    const res = await cfApiFetch(
+      env,
+      `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}/logs?limit=20`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    const data = await res.json<CfApiResult<GatewayLogEntry[]>>();
+    if (!res.ok) return undefined;
+    const guardEntries = (data.result ?? []).filter((entry) => {
+      if (entry.request_type !== "llama-guard" || !entry.created_at) return false;
+      const createdAtMs = Date.parse(entry.created_at);
+      return !Number.isNaN(createdAtMs) && createdAtMs >= windowStartMs;
+    });
+    return {
+      evaluations: guardEntries.length,
+      totalMs: guardEntries.reduce((sum, entry) => sum + (entry.duration ?? 0), 0),
+      entries: guardEntries.map((entry) => ({
+        duration: entry.duration ?? 0,
+        tokens_in: entry.tokens_in ?? 0,
+        created_at: entry.created_at,
+      })),
+    };
+  } catch {
+    // Never fail the chat response over activity enrichment.
+    return undefined;
+  }
+}
+
 dualRoute("post", "/chat", chatHandler);
 
 // ─── API: Custom Costs ───────────────────────────────────────────────────────

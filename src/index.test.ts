@@ -369,6 +369,91 @@ describe("AI Gateway Demo", () => {
       expect(data.estimatedCost).toBeUndefined();
     });
 
+    it("includes guardrails activity from the gateway logs when Llama Guard evaluations ran", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/compat/chat/completions")) {
+          return Promise.resolve(
+            mockRes({
+              model: "@cf/meta/llama-3.2-3b-instruct",
+              usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+              choices: [{ message: { content: "Hello back" } }],
+            }),
+          );
+        }
+        // Gateway logs API — one llama-guard evaluation entry for this request
+        // plus one older/other entry that must be excluded.
+        return Promise.resolve(
+          mockRes({
+            result: [
+              {
+                request_type: "llama-guard",
+                created_at: new Date().toISOString(),
+                duration: 1200,
+                tokens_in: 240,
+              },
+              {
+                request_type: "llama-guard",
+                created_at: new Date(Date.now() - 60_000).toISOString(), // too old
+                duration: 999,
+                tokens_in: 1,
+              },
+              {
+                request_type: "provider",
+                created_at: new Date().toISOString(),
+                duration: 700,
+              },
+            ],
+            success: true,
+          }),
+        );
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.2-3b-instruct", prompt: "Hello" }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        ok: boolean;
+        guardrails?: { evaluations: number; totalMs: number; entries: Array<{ duration: number }> };
+      };
+      expect(data.ok).toBe(true);
+      expect(data.guardrails).toBeDefined();
+      expect(data.guardrails!.evaluations).toBe(1);
+      expect(data.guardrails!.totalMs).toBe(1200);
+      expect(data.guardrails!.entries).toHaveLength(1);
+    });
+
+    it("omits guardrails activity when the logs lookup fails (never fails the chat)", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/compat/chat/completions")) {
+          return Promise.resolve(
+            mockRes({
+              model: "@cf/meta/llama-3.2-3b-instruct",
+              usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+              choices: [{ message: { content: "Hello back" } }],
+            }),
+          );
+        }
+        return Promise.reject(new Error("logs API down"));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.2-3b-instruct", prompt: "Hello" }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; guardrails: unknown };
+      expect(data.ok).toBe(true);
+      expect(data.guardrails).toBeUndefined();
+    });
+
     it("returns 429 when upstream is rate limited", async () => {
       globalThis.fetch = vi
         .fn()

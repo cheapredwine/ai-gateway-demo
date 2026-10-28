@@ -348,7 +348,8 @@ for log in json.load(sys.stdin).get('result', [])[:3]:
 ### 9.2 Turn guardrails on and compare
 
 1. Check **Enable content moderation (Llama Guard)** — takes effect immediately; the top-of-page badge flips to **On**
-2. Send the same request again — noticeably slower
+2. Wait ~2-3 seconds (the gateway config needs a moment to propagate to the edge — a request fired instantly after enabling can still run without Guardrails)
+3. Send the same request again — noticeably slower, and the output now shows a **🛡 Guardrails: N Llama Guard evaluations (+X.Xs)** line proving the request actually went through moderation
 
 > **What's happening:** Guardrails runs Llama Guard 3 8B as a _separate inference call_ to evaluate the prompt, and another separate call to evaluate the response — on top of whatever model you picked for the actual chat completion. Measured directly against this gateway: a simple request went from **~700ms with guardrails off to 6-15+ seconds with it on** — an 8-20x difference, and that gap exists regardless of which chat model is selected. Cloudflare's own docs put the added cost at "~500ms per evaluation," but that's per evaluation — prompt and response are each evaluated separately, and longer content gets chunked into multiple evaluations.
 >

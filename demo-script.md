@@ -36,7 +36,7 @@
 
 ### 1.3 Generate traffic
 
-1. Pick a model (e.g., Llama 3.1 8B FP8 — the default)
+1. Pick a model (e.g., Llama 3.2 3B Instruct — the default, chosen for low latency live)
 2. Type a prompt: "Explain AI Gateway in one sentence"
 3. Click **Send**
 4. The response appears in the chat output

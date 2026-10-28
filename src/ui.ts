@@ -118,8 +118,8 @@ export function renderHtml(opts: UiOptions): string {
         <label>Workers AI Model</label>
         <select id="model" onchange="onModelChange()">
           <optgroup label="Meta Llama">
-            <option value="@cf/meta/llama-3.1-8b-instruct-fp8" selected>Llama 3.1 8B FP8</option>
-            <option value="@cf/meta/llama-3.2-3b-instruct">Llama 3.2 3B Instruct</option>
+            <option value="@cf/meta/llama-3.1-8b-instruct-fp8">Llama 3.1 8B FP8</option>
+            <option value="@cf/meta/llama-3.2-3b-instruct" selected>Llama 3.2 3B Instruct (Fast)</option>
             <option value="@cf/meta/llama-3.3-70b-instruct-fp8-fast">Llama 3.3 70B FP8 Fast</option>
             <option value="@cf/meta/llama-4-scout-17b-16e-instruct">Llama 4 Scout 17B</option>
           </optgroup>

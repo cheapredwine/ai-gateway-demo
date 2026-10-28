@@ -1,0 +1,21 @@
+package-lock.json
+  s_93ad2b19628b1f::t_0dad2eb1bee700 16,18,1241-1256,2288-2334
+package.json
+  s_93ad2b19628b1f::t_5d063db0fbbaf1 18,20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "006efa64b3a24435434d92ca02498f3639a2eba3",
+  "prompts": {},
+  "sessions": {
+    "s_93ad2b19628b1f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_fa6ab478fffeCiQ5uxPaBxXtVP",
+        "model": "@cf/moonshotai/kimi-k2.6"
+      },
+      "human_author": "Jason Sherron <jsherron@cloudflare.com>"
+    }
+  }
+}

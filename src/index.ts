@@ -113,12 +113,24 @@ type CfApiResult<T = unknown> = { result?: T; errors?: CfApiError[] };
 type GuardrailsCategories = Record<string, "FLAG" | "BLOCK">;
 type GuardrailsConfig = { prompt?: GuardrailsCategories; response?: GuardrailsCategories };
 
+// Only the fields this Worker specifically reads or reasons about are
+// declared here. At runtime the gateway resource has 20+ other fields
+// (log_management, zdr, workers_ai_billing_mode, id, created_at, ...) that
+// settingsHandler preserves too, via spreading the whole parsed object —
+// see settingsHandler for why a narrower allowlist approach already bit us.
 type GatewayConfig = {
   cache_ttl?: number;
   rate_limiting_limit?: number;
   rate_limiting_interval?: number;
   collect_logs?: boolean;
   cache_invalidate_on_update?: boolean;
+  // "Authenticated Gateway" — requires a cf-aig-authorization header on every
+  // request when true. Confirmed live that an earlier version of
+  // settingsHandler was silently flipping this to false (it wasn't in the
+  // handler's old explicit field list), which broke Access-authenticated
+  // gateway-mode chat with a 401. Not touched intentionally by this app —
+  // declared here only so the spread-preservation behavior is documented.
+  authentication?: boolean;
   guardrails?: GuardrailsConfig;
   dlp?: unknown;
 };
@@ -385,12 +397,22 @@ const settingsHandler = async (c: AppContext) => {
     guardrailsEnabled?: boolean;
   };
 
-  // Read current config first: the PUT endpoint requires collect_logs,
-  // cache_invalidate_on_update, and cache_ttl (confirmed against the live
-  // API — a request without them is rejected with 7001 "Required"), and
-  // replacing the gateway without re-sending `dlp` would silently clear any
-  // existing DLP policy. Omitting `guardrails` entirely is how the API
-  // disables it, so it must be included only when staying/being turned on.
+  // Read current config first. The PUT endpoint REPLACES the gateway's
+  // config wholesale — it does not partial-merge fields you omit. Confirmed
+  // live, the hard way: an earlier version of this handler that only sent
+  // rate-limiting fields had already silently flipped `authentication` from
+  // true to false (breaking Access-authenticated gateway-mode chat with a
+  // bare 401) by the time this was caught, in addition to the previously
+  // known risk of clearing `dlp`. There are 20+ other fields on this
+  // resource (log_management, zdr, workers_ai_billing_mode, ...) that could
+  // just as easily be silently reset the same way.
+  //
+  // Fix: spread the ENTIRE current config into the PUT body first, then
+  // override only the fields we're intentionally changing. Confirmed this
+  // works cleanly even with read-only fields present (id, created_at,
+  // store_id, etc.) — the API just ignores them on write, no new validation
+  // errors. This is far more robust than hand-picking fields to preserve,
+  // since it can't miss one we haven't thought of yet.
   const currentRes = await cfApiFetch(
     env,
     `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
@@ -398,26 +420,41 @@ const settingsHandler = async (c: AppContext) => {
   const currentData = await currentRes.json<CfApiResult<GatewayConfig>>();
   const current: GatewayConfig = currentRes.ok ? (currentData.result ?? {}) : {};
 
+  // The PUT endpoint also requires these three fields outright (confirmed
+  // live: omitting them is rejected with 7001 "Required"/"Expected number,
+  // received nan") — the spread above covers them when already present, but
+  // a brand-new gateway with no prior config wouldn't have them yet.
+  const putBody: Record<string, unknown> = {
+    ...current,
+    cache_ttl: current.cache_ttl ?? 0,
+    collect_logs: current.collect_logs ?? true,
+    cache_invalidate_on_update: current.cache_invalidate_on_update ?? false,
+    rate_limiting_limit: body.rateLimit.enabled ? body.rateLimit.limit : 0,
+    rate_limiting_interval: body.rateLimit.enabled ? body.rateLimit.interval : 0,
+    ...(body.rateLimit.enabled ? { rate_limiting_technique: body.rateLimit.technique } : {}),
+  };
+
+  // Guardrails needs explicit handling beyond the spread: enabling re-applies
+  // the existing config (or a safe default if there isn't one yet), but
+  // disabling requires *removing* the key entirely — the spread above would
+  // otherwise carry over an existing enabled config even when the caller
+  // asked to turn it off.
   const guardrailsPayload = body.guardrailsEnabled
     ? (current.guardrails ?? DEFAULT_GUARDRAILS)
     : undefined;
+  if (guardrailsPayload) {
+    putBody.guardrails = guardrailsPayload;
+  } else {
+    delete putBody.guardrails;
+  }
 
-  // 1. Update gateway rate limiting (+ guardrails, preserving DLP/logging config)
+  // 1. Update gateway rate limiting (+ guardrails), preserving everything else
   const gwUpdateRes = await cfApiFetch(
     env,
     `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
     {
       method: "PUT",
-      body: JSON.stringify({
-        rate_limiting_limit: body.rateLimit.enabled ? body.rateLimit.limit : 0,
-        rate_limiting_interval: body.rateLimit.enabled ? body.rateLimit.interval : 0,
-        ...(body.rateLimit.enabled ? { rate_limiting_technique: body.rateLimit.technique } : {}),
-        cache_ttl: current.cache_ttl ?? 0,
-        collect_logs: current.collect_logs ?? true,
-        cache_invalidate_on_update: current.cache_invalidate_on_update ?? false,
-        ...(current.dlp ? { dlp: current.dlp } : {}),
-        ...(guardrailsPayload ? { guardrails: guardrailsPayload } : {}),
-      }),
+      body: JSON.stringify(putBody),
     },
   );
 

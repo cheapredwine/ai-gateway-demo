@@ -1080,6 +1080,84 @@ describe("AI Gateway Demo", () => {
       );
       expect(putBody.dlp).toEqual(existingDlp);
     });
+
+    it("preserves arbitrary unrelated gateway fields via full-config spread (regression: authentication was silently reset to false by an earlier version of this handler)", async () => {
+      let putBody: any;
+      // A representative slice of the real gateway resource's other fields —
+      // none of these are things settingsHandler intentionally manages, but
+      // all of them must survive a rate-limit-only update.
+      const unrelatedFields = {
+        authentication: true,
+        log_management: 10000000,
+        log_management_strategy: "DELETE_OLDEST",
+        workers_ai_billing_mode: "postpaid",
+        zdr: false,
+        id: "ai-cost-demo",
+      };
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        return Promise.resolve(mockRes({ result: unrelatedFields, success: true }));
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: true, limit: 75, interval: 30, technique: "sliding" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
+        }),
+      );
+      for (const [key, value] of Object.entries(unrelatedFields)) {
+        expect(putBody[key]).toEqual(value);
+      }
+      // And the intentional change still applied on top of the spread
+      expect(putBody.rate_limiting_limit).toBe(75);
+      expect(putBody.rate_limiting_technique).toBe("sliding");
+    });
+
+    it("guardrailsEnabled: false removes an already-present guardrails config from the spread (not just omits adding one)", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        if (url.includes("/spend-limits")) {
+          return Promise.resolve(mockRes({ result: [], success: true }));
+        }
+        // Current config already HAS guardrails — the spread would carry
+        // this over unless guardrailsEnabled:false explicitly deletes it.
+        return Promise.resolve(
+          mockRes({
+            result: { guardrails: { prompt: { S1: "BLOCK" }, response: { S1: "BLOCK" } } },
+            success: true,
+          }),
+        );
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+            guardrailsEnabled: false,
+          }),
+        }),
+      );
+      expect(putBody).not.toHaveProperty("guardrails");
+    });
   });
 
   // ─── Stats ────────────────────────────────────────────────────────────────

@@ -562,7 +562,11 @@ export function renderHtml(opts: UiOptions): string {
                     const actData = await actRes.json();
                     const gw = actData.guardrails;
                     if (gw && gw.evaluations > 0) {
-                      log(\`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\`, "warn");
+                      const stale = !document.getElementById("guardrailsEnabled").checked;
+                      log(
+                        \`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\${stale ? " — checkbox is off; edge is still applying the disable (takes up to a minute)" : ""}\`,
+                        "warn",
+                      );
                     }
                   }
                 } catch (e2) {}
@@ -600,7 +604,11 @@ export function renderHtml(opts: UiOptions): string {
                 // each Llama Guard evaluation is a separate logged sub-request.
                 const gw = data.guardrails;
                 if (gw && gw.evaluations > 0) {
-                  log(\`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\`, "warn");
+                  const stale = !document.getElementById("guardrailsEnabled").checked;
+                  log(
+                    \`  🛡 Guardrails: \${gw.evaluations} Llama Guard evaluation\${gw.evaluations === 1 ? "" : "s"} (+\${(gw.totalMs / 1000).toFixed(1)}s)\${stale ? " — checkbox is off; edge is still applying the disable (takes up to a minute)" : ""}\`,
+                    "warn",
+                  );
                 }
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
@@ -722,7 +730,19 @@ export function renderHtml(opts: UiOptions): string {
         const data = await res.json();
         if (data.ok) {
           setGuardrailsDisplay(Boolean(data.guardrailsEnabled));
-          show("guardrailsMessage", "Guardrails " + (data.guardrailsEnabled ? "enabled" : "disabled") + ".", "success", 0);
+          // Edge propagation is asymmetric (measured live 2026-10-28):
+          // enabling takes effect in ~2-3s, but disabling kept applying
+          // Guardrails to new requests for 30s+ after the config PUT
+          // succeeded. Say so, or users read continued 🛡 activity as
+          // "the checkbox is broken".
+          show(
+            "guardrailsMessage",
+            data.guardrailsEnabled
+              ? "Guardrails enabled. Takes a few seconds to start applying at the edge."
+              : "Guardrails disabled. Requests may keep showing Llama Guard evaluations for up to a minute while the change propagates.",
+            "success",
+            0,
+          );
         } else {
           setGuardrailsDisplay(!enabled);
           show("guardrailsMessage", "Error: " + data.error, "error", 0);

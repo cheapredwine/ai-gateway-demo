@@ -464,6 +464,10 @@ export function renderHtml(opts: UiOptions): string {
       const sendBurstBtn = document.getElementById("sendBurstBtn");
       sendBtn.disabled = true;
       sendBurstBtn.disabled = true;
+      // Read before the try block so the finally below can still see them —
+      // const/let declared inside try are not visible in its finally.
+      const useCache = document.getElementById("useCache").checked;
+      const skipCache = document.getElementById("skipCache").checked;
 
       try {
         const modelSel = document.getElementById("model").value;
@@ -472,10 +476,8 @@ export function renderHtml(opts: UiOptions): string {
         const useCustom = document.getElementById("useCustomCost").checked;
         const costIn = parseFloat(document.getElementById("costIn").value);
         const costOut = parseFloat(document.getElementById("costOut").value);
-        const useCache = document.getElementById("useCache").checked;
         const cacheTTL = parseInt(document.getElementById("cacheTTL").value, 10);
         const cacheKey = document.getElementById("cacheKey").value;
-        const skipCache = document.getElementById("skipCache").checked;
         const useMetadata = document.getElementById("useMetadata").checked;
         const metaKey = document.getElementById("metaKey").value;
         const metaValue = document.getElementById("metaValue").value;
@@ -573,6 +575,19 @@ export function renderHtml(opts: UiOptions): string {
 
         await Promise.all(Array.from({ length: count }, (_, i) => sendOne(i)));
         log(\`Done — \${count} request\${count === 1 ? "" : "s"} complete.\`, "info");
+
+        // AI Gateway's cache write isn't synchronous with the response —
+        // measured empirically: immediate back-to-back identical requests
+        // HIT only ~40% of the time, but requests spaced >=500ms apart HIT
+        // reliably (100% across repeated trials). Hold the Send button
+        // disabled a bit past that threshold specifically when caching is
+        // in play, so clicking Send again right after the response appears
+        // demos caching reliably instead of occasionally showing a false
+        // MISS,MISS from pure propagation timing.
+        if (count === 1 && useCache && !skipCache) {
+          log("Waiting ~1s for the cache write to finish propagating before you can send again...", "info");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       } finally {
         sendInFlight = false;
         sendBtn.disabled = false;

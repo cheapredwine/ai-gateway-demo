@@ -153,7 +153,9 @@ Expected: `cf.common_name` with the service token ID, user agent shows `cloudfla
 6. First response: `cache MISS`
 7. Second response: `cache HIT`
 
-> **Important — use Send Request, not Send Burst, and wait between clicks:** Caching only works across _sequential, completed_ requests. Two identical requests fired at the same time (a double-click before the first response returns, or **Send Burst**, which fires all 5 at once via `Promise.all`) will **both show MISS** — there's no completed response yet for either one to reuse. This isn't a bug; it's how a distributed cache behaves when nothing has finished writing to it yet. The UI disables both buttons while a request is in flight specifically to prevent an accidental double-click from producing this exact false negative mid-demo.
+> **Important — use Send Request, not Send Burst:** Caching only works across _sequential, completed_ requests. Two identical requests fired at the same time (a double-click before the first response returns, or **Send Burst**, which fires all 5 at once via `Promise.all`) will **both show MISS** — there's no completed response yet for either one to reuse.
+>
+> **There's also a brief cache-write propagation delay even for sequential requests.** Measured empirically against the live gateway: two identical requests fired back-to-back the instant the first response returns HIT only ~40% of the time; spaced ≥500ms apart they HIT 100% of the time across repeated trials. AI Gateway's cache write isn't synchronous with the response it returns. The UI handles both of these for you automatically — it disables the Send buttons while a request is in flight (preventing the double-click race), and after a cache-enabled single Send completes, holds the button disabled for ~1 more second specifically to clear that propagation window before you can send again. You don't need to manually wait; just use **Send Request**, not **Send Burst**, for this demo.
 >
 > **What's happening:** The Worker sends `cf-aig-cache-ttl: 300`. The AI Gateway caches the response. Identical requests within the TTL window are served from cache — no upstream call, no token cost.
 

@@ -108,7 +108,7 @@ export function renderHtml(opts: UiOptions): string {
 <body>
   <div class="container">
     <h1>AI Gateway Cost Control Demo</h1>
-    <p class="subtitle">Gateway: <strong>${gatewayName}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span>${isGateway ? ' | <button id="logoutBtn" onclick="accessLogout()" style="background:#dc2626;color:white;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-left:0.5rem;">Access Logout</button>' : ""}</p>
+    <p class="subtitle">Gateway: <strong>${gatewayName}</strong> | Provider: <strong>Cloudflare Workers AI</strong> | <span id="identityMode">Loading...</span> | Guardrails: <span id="guardrailsBadge">...</span>${isGateway ? ' | <button id="logoutBtn" onclick="accessLogout()" style="background:#dc2626;color:white;border:none;padding:2px 10px;border-radius:4px;cursor:pointer;font-size:0.8rem;margin-left:0.5rem;">Access Logout</button>' : ""}</p>
 
     <div class="grid">
       <!-- Chat / Traffic Generator -->
@@ -320,10 +320,11 @@ export function renderHtml(opts: UiOptions): string {
 
         <h3 style="font-size:0.9rem;color:#94a3b8;margin:0.5rem 0">Guardrails</h3>
         <div class="toggle">
-          <input type="checkbox" id="guardrailsEnabled">
+          <input type="checkbox" id="guardrailsEnabled" onchange="toggleGuardrails()">
           <label for="guardrailsEnabled" style="margin:0">Enable content moderation (Llama Guard)</label>
         </div>
-        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Screens prompts and responses for unsafe content. Adds real latency — Llama Guard evaluates the prompt <em>and</em> the response as separate inference calls on top of your chat model, typically ~500ms+ each. Disable for a fast demo; enable to show the safety feature.</p>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Screens prompts and responses for unsafe content. Adds real latency — Llama Guard evaluates the prompt <em>and</em> the response as separate inference calls on top of your chat model, typically ~500ms+ each. Disable for a fast demo; enable to show the safety feature. Takes effect immediately — no need to click Apply below.</p>
+        <div id="guardrailsMessage"></div>
 
         <button onclick="saveGatewaySettings()">Apply All to Gateway</button>
         <div id="limitMessage"></div>
@@ -642,15 +643,13 @@ export function renderHtml(opts: UiOptions): string {
       const budget = parseFloat(document.getElementById("limitBudget").value);
       const window = document.getElementById("limitWindow").value;
       const scope = document.getElementById("limitScope").value;
-      const guardrailsEnabled = document.getElementById("guardrailsEnabled").checked;
       try {
         const res = await fetch(\`\${API}/api/settings\`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             rateLimit: { enabled: rlEnabled, limit: rlLimit, interval: rlInterval, technique: rlTechnique },
-            spendLimit: { enabled: limitEnabled, budget, window, scope },
-            guardrailsEnabled
+            spendLimit: { enabled: limitEnabled, budget, window, scope }
           })
         });
         const data = await res.json();
@@ -658,6 +657,36 @@ export function renderHtml(opts: UiOptions): string {
         if (data.ok) loadStats();
       } catch (e) {
         show("limitMessage", "Error: " + e.message, "error");
+      }
+    }
+
+    // Guardrails has its own dedicated endpoint (not bundled into
+    // saveGatewaySettings) so flipping this one switch takes effect
+    // immediately, without re-applying whatever rate-limit/spend-limit
+    // values happen to be sitting in the form at the time.
+    async function toggleGuardrails() {
+      const checkbox = document.getElementById("guardrailsEnabled");
+      const enabled = checkbox.checked;
+      checkbox.disabled = true;
+      try {
+        const res = await fetch(\`\${API}/api/guardrails\`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          show("guardrailsMessage", "Guardrails " + (data.guardrailsEnabled ? "enabled" : "disabled") + ".", "success");
+        } else {
+          checkbox.checked = !enabled;
+          show("guardrailsMessage", "Error: " + data.error, "error");
+        }
+      } catch (e) {
+        checkbox.checked = !enabled;
+        show("guardrailsMessage", "Error: " + e.message, "error");
+      } finally {
+        checkbox.disabled = false;
+        loadStats();
       }
     }
 
@@ -676,6 +705,9 @@ export function renderHtml(opts: UiOptions): string {
           document.getElementById("statSpendLimit").textContent = data.spendLimit ?? "-";
           document.getElementById("statGuardrails").textContent = data.guardrailsEnabled ? "On" : "Off";
           document.getElementById("guardrailsEnabled").checked = Boolean(data.guardrailsEnabled);
+          const badge = document.getElementById("guardrailsBadge");
+          badge.textContent = data.guardrailsEnabled ? "On" : "Off";
+          badge.style.color = data.guardrailsEnabled ? "#22c55e" : "#94a3b8";
           document.getElementById("statsDetail").textContent = data.note || "";
         } else {
           document.getElementById("statsDetail").textContent = "Error: " + (data.error || "Unknown");

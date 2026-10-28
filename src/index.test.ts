@@ -949,110 +949,6 @@ describe("AI Gateway Demo", () => {
       expect(typeof putBody.cache_ttl).toBe("number");
     });
 
-    it("enabling guardrails with no prior config applies the default (FLAG-everywhere) categories", async () => {
-      let putBody: any;
-      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
-        const method = opts?.method ?? "GET";
-        if (method === "PUT") {
-          putBody = JSON.parse(opts.body);
-          return Promise.resolve(mockRes({ result: {}, success: true }));
-        }
-        if (url.includes("/spend-limits")) {
-          return Promise.resolve(mockRes({ result: [], success: true }));
-        }
-        // GET of current gateway config — no guardrails configured yet
-        return Promise.resolve(mockRes({ result: {}, success: true }));
-      });
-
-      const res = await fetchApp(
-        new Request("http://localhost/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
-          body: JSON.stringify({
-            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
-            guardrailsEnabled: true,
-          }),
-        }),
-      );
-      expect(res.status).toBe(200);
-      const data = (await res.json()) as { guardrailsEnabled: boolean };
-      expect(data.guardrailsEnabled).toBe(true);
-      expect(putBody.guardrails).toBeDefined();
-      expect(putBody.guardrails.prompt.S1).toBe("FLAG");
-      expect(putBody.guardrails.response.P1).toBe("FLAG");
-    });
-
-    it("enabling guardrails when a custom config already exists preserves it instead of overwriting with the default", async () => {
-      let putBody: any;
-      const existingGuardrails = {
-        prompt: { S1: "BLOCK", P1: "BLOCK" },
-        response: { S1: "BLOCK", P1: "BLOCK" },
-      };
-      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
-        const method = opts?.method ?? "GET";
-        if (method === "PUT") {
-          putBody = JSON.parse(opts.body);
-          return Promise.resolve(mockRes({ result: {}, success: true }));
-        }
-        if (url.includes("/spend-limits")) {
-          return Promise.resolve(mockRes({ result: [], success: true }));
-        }
-        return Promise.resolve(
-          mockRes({ result: { guardrails: existingGuardrails }, success: true }),
-        );
-      });
-
-      await fetchApp(
-        new Request("http://localhost/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
-          body: JSON.stringify({
-            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
-            guardrailsEnabled: true,
-          }),
-        }),
-      );
-      expect(putBody.guardrails).toEqual(existingGuardrails);
-    });
-
-    it("disabling guardrails omits the guardrails key entirely (that's how the API clears it)", async () => {
-      let putBody: any;
-      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
-        const method = opts?.method ?? "GET";
-        if (method === "PUT") {
-          putBody = JSON.parse(opts.body);
-          return Promise.resolve(mockRes({ result: {}, success: true }));
-        }
-        if (url.includes("/spend-limits")) {
-          return Promise.resolve(mockRes({ result: [], success: true }));
-        }
-        return Promise.resolve(
-          mockRes({
-            result: { guardrails: { prompt: { S1: "FLAG" }, response: { S1: "FLAG" } } },
-            success: true,
-          }),
-        );
-      });
-
-      const res = await fetchApp(
-        new Request("http://localhost/api/settings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
-          body: JSON.stringify({
-            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
-            guardrailsEnabled: false,
-          }),
-        }),
-      );
-      expect(res.status).toBe(200);
-      const data = (await res.json()) as { guardrailsEnabled: boolean };
-      expect(data.guardrailsEnabled).toBe(false);
-      expect(putBody).not.toHaveProperty("guardrails");
-    });
-
     it("preserves an existing DLP policy instead of clobbering it when updating rate limits", async () => {
       let putBody: any;
       const existingDlp = { enabled: true, policies: [{ id: "Policy 1", enabled: true }] };
@@ -1123,8 +1019,23 @@ describe("AI Gateway Demo", () => {
       expect(putBody.rate_limiting_limit).toBe(75);
       expect(putBody.rate_limiting_technique).toBe("sliding");
     });
+  });
 
-    it("guardrailsEnabled: false removes an already-present guardrails config from the spread (not just omits adding one)", async () => {
+  // ─── Guardrails ───────────────────────────────────────────────────────────
+
+  describe("Guardrails", () => {
+    it("requires admin auth", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/guardrails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("enabling with no prior config applies the default (FLAG-everywhere) categories", async () => {
       let putBody: any;
       globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
         const method = opts?.method ?? "GET";
@@ -1132,11 +1043,87 @@ describe("AI Gateway Demo", () => {
           putBody = JSON.parse(opts.body);
           return Promise.resolve(mockRes({ result: {}, success: true }));
         }
-        if (url.includes("/spend-limits")) {
-          return Promise.resolve(mockRes({ result: [], success: true }));
+        // GET of current gateway config — no guardrails configured yet
+        return Promise.resolve(mockRes({ result: {}, success: true }));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/guardrails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; guardrailsEnabled: boolean };
+      expect(data.ok).toBe(true);
+      expect(data.guardrailsEnabled).toBe(true);
+      expect(putBody.guardrails).toBeDefined();
+      expect(putBody.guardrails.prompt.S1).toBe("FLAG");
+      expect(putBody.guardrails.response.P1).toBe("FLAG");
+    });
+
+    it("enabling when a custom config already exists preserves it instead of overwriting with the default", async () => {
+      let putBody: any;
+      const existingGuardrails = {
+        prompt: { S1: "BLOCK", P1: "BLOCK" },
+        response: { S1: "BLOCK", P1: "BLOCK" },
+      };
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        return Promise.resolve(
+          mockRes({ result: { guardrails: existingGuardrails }, success: true }),
+        );
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/guardrails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+      expect(putBody.guardrails).toEqual(existingGuardrails);
+    });
+
+    it("disabling omits the guardrails key entirely (that's how the API clears it)", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        return Promise.resolve(mockRes({ result: {}, success: true }));
+      });
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/guardrails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({ enabled: false }),
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; guardrailsEnabled: boolean };
+      expect(data.guardrailsEnabled).toBe(false);
+      expect(putBody).not.toHaveProperty("guardrails");
+    });
+
+    it("disabling removes an already-present guardrails config (the spread alone would otherwise preserve it)", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
         }
         // Current config already HAS guardrails — the spread would carry
-        // this over unless guardrailsEnabled:false explicitly deletes it.
+        // this over unless enabled:false explicitly deletes it.
         return Promise.resolve(
           mockRes({
             result: { guardrails: { prompt: { S1: "BLOCK" }, response: { S1: "BLOCK" } } },
@@ -1146,17 +1133,41 @@ describe("AI Gateway Demo", () => {
       });
 
       await fetchApp(
-        new Request("http://localhost/api/settings", {
+        new Request("http://localhost/api/guardrails", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
-          body: JSON.stringify({
-            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
-            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
-            guardrailsEnabled: false,
-          }),
+          body: JSON.stringify({ enabled: false }),
         }),
       );
       expect(putBody).not.toHaveProperty("guardrails");
+    });
+
+    it("preserves unrelated gateway fields (rate limiting, authentication) via the full-config spread", async () => {
+      let putBody: any;
+      globalThis.fetch = vi.fn().mockImplementation((url: string, opts: any) => {
+        const method = opts?.method ?? "GET";
+        if (method === "PUT") {
+          putBody = JSON.parse(opts.body);
+          return Promise.resolve(mockRes({ result: {}, success: true }));
+        }
+        return Promise.resolve(
+          mockRes({
+            result: { rate_limiting_limit: 75, rate_limiting_interval: 30, authentication: true },
+            success: true,
+          }),
+        );
+      });
+
+      await fetchApp(
+        new Request("http://localhost/api/guardrails", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      );
+      expect(putBody.rate_limiting_limit).toBe(75);
+      expect(putBody.rate_limiting_interval).toBe(30);
+      expect(putBody.authentication).toBe(true);
     });
   });
 

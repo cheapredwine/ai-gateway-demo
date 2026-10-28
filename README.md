@@ -189,7 +189,7 @@ Gateway-level budget enforcement. When cumulative estimated spend hits the budge
 
 ### Guardrails
 
-Toggle Llama Guard content moderation on/off for the gateway from the **Gateway Settings** panel. When enabled, every request gets screened by Llama Guard 3 8B as a separate inference call (prompt and response evaluated independently), on top of whatever model you picked for the actual chat completion.
+Toggle Llama Guard content moderation on/off for the gateway from the **Gateway Settings** panel — takes effect immediately on click (its own dedicated endpoint, not bundled into the rate-limit/spend-limit "Apply All to Gateway" button), and a **Guardrails: On/Off** badge next to the gateway name at the top of the page always reflects the live state. When enabled, every request gets screened by Llama Guard 3 8B as a separate inference call (prompt and response evaluated independently), on top of whatever model you picked for the actual chat completion.
 
 > **This is the demo's dominant latency factor — not model choice.** Measured directly: a request went from ~700ms with Guardrails off to 6-15+ seconds with it on, regardless of which chat model was selected. If responses feel slow, check this toggle before switching models.
 

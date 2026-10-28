@@ -180,6 +180,33 @@ const isGuardrailsOn = (guardrails: GuardrailsConfig | undefined): boolean =>
     (Object.keys(guardrails.prompt ?? {}).length > 0 ||
       Object.keys(guardrails.response ?? {}).length > 0),
   );
+
+// Shared by settingsHandler, statsHandler, and guardrailsHandler — all three
+// need to read the gateway's current config before writing it back, since
+// the PUT endpoint replaces the whole resource (see settingsHandler for why
+// that matters).
+async function fetchCurrentGatewayConfig(env: Env): Promise<GatewayConfig> {
+  const res = await cfApiFetch(
+    env,
+    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
+  );
+  const data = await res.json<CfApiResult<GatewayConfig>>();
+  return res.ok ? (data.result ?? {}) : {};
+}
+
+// Base PUT body shared by any handler that writes the gateway's config:
+// spread the full current config (preserves everything we're not touching —
+// see settingsHandler for the authentication/dlp incident that motivated
+// this), plus the three fields the API requires outright on every write.
+function baseGatewayPutBody(current: GatewayConfig): Record<string, unknown> {
+  return {
+    ...current,
+    cache_ttl: current.cache_ttl ?? 0,
+    collect_logs: current.collect_logs ?? true,
+    cache_invalidate_on_update: current.cache_invalidate_on_update ?? false,
+  };
+}
+
 type SpendLimitRule = { id: string };
 type AnalyticsGroup = {
   count?: number;
@@ -394,61 +421,23 @@ const settingsHandler = async (c: AppContext) => {
   const body = (await c.req.json()) as {
     rateLimit: { enabled: boolean; limit: number; interval: number; technique: string };
     spendLimit: { enabled: boolean; budget: number; window: string; scope: string };
-    guardrailsEnabled?: boolean;
   };
 
-  // Read current config first. The PUT endpoint REPLACES the gateway's
-  // config wholesale — it does not partial-merge fields you omit. Confirmed
-  // live, the hard way: an earlier version of this handler that only sent
-  // rate-limiting fields had already silently flipped `authentication` from
-  // true to false (breaking Access-authenticated gateway-mode chat with a
-  // bare 401) by the time this was caught, in addition to the previously
-  // known risk of clearing `dlp`. There are 20+ other fields on this
-  // resource (log_management, zdr, workers_ai_billing_mode, ...) that could
-  // just as easily be silently reset the same way.
-  //
-  // Fix: spread the ENTIRE current config into the PUT body first, then
-  // override only the fields we're intentionally changing. Confirmed this
-  // works cleanly even with read-only fields present (id, created_at,
-  // store_id, etc.) — the API just ignores them on write, no new validation
-  // errors. This is far more robust than hand-picking fields to preserve,
-  // since it can't miss one we haven't thought of yet.
-  const currentRes = await cfApiFetch(
-    env,
-    `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
-  );
-  const currentData = await currentRes.json<CfApiResult<GatewayConfig>>();
-  const current: GatewayConfig = currentRes.ok ? (currentData.result ?? {}) : {};
-
-  // The PUT endpoint also requires these three fields outright (confirmed
-  // live: omitting them is rejected with 7001 "Required"/"Expected number,
-  // received nan") — the spread above covers them when already present, but
-  // a brand-new gateway with no prior config wouldn't have them yet.
+  // See fetchCurrentGatewayConfig/baseGatewayPutBody for why this handler
+  // reads the current config and spreads it before writing: the PUT
+  // endpoint replaces the gateway's config wholesale, and an earlier version
+  // of this handler that only sent rate-limiting fields had silently
+  // flipped `authentication` to false (breaking Access-authenticated
+  // gateway-mode chat with a bare 401) before that was caught.
+  const current = await fetchCurrentGatewayConfig(env);
   const putBody: Record<string, unknown> = {
-    ...current,
-    cache_ttl: current.cache_ttl ?? 0,
-    collect_logs: current.collect_logs ?? true,
-    cache_invalidate_on_update: current.cache_invalidate_on_update ?? false,
+    ...baseGatewayPutBody(current),
     rate_limiting_limit: body.rateLimit.enabled ? body.rateLimit.limit : 0,
     rate_limiting_interval: body.rateLimit.enabled ? body.rateLimit.interval : 0,
     ...(body.rateLimit.enabled ? { rate_limiting_technique: body.rateLimit.technique } : {}),
   };
 
-  // Guardrails needs explicit handling beyond the spread: enabling re-applies
-  // the existing config (or a safe default if there isn't one yet), but
-  // disabling requires *removing* the key entirely — the spread above would
-  // otherwise carry over an existing enabled config even when the caller
-  // asked to turn it off.
-  const guardrailsPayload = body.guardrailsEnabled
-    ? (current.guardrails ?? DEFAULT_GUARDRAILS)
-    : undefined;
-  if (guardrailsPayload) {
-    putBody.guardrails = guardrailsPayload;
-  } else {
-    delete putBody.guardrails;
-  }
-
-  // 1. Update gateway rate limiting (+ guardrails), preserving everything else
+  // 1. Update gateway rate limiting, preserving everything else
   const gwUpdateRes = await cfApiFetch(
     env,
     `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
@@ -503,7 +492,6 @@ const settingsHandler = async (c: AppContext) => {
       ok: true,
       note: "Rate limiting updated. Spend limits disabled.",
       warnings,
-      guardrailsEnabled: Boolean(guardrailsPayload),
     });
   }
 
@@ -538,13 +526,58 @@ const settingsHandler = async (c: AppContext) => {
       ok: true,
       ruleId: data.result?.id,
       warnings,
-      guardrailsEnabled: Boolean(guardrailsPayload),
     });
   } catch (err: unknown) {
     return c.json({ ok: false, error: errorMessage(err) }, 500);
   }
 };
 dualRoute("post", "/settings", settingsHandler);
+
+// ─── API: Guardrails ──────────────────────────────────────────────────────────
+// A dedicated, immediate-effect endpoint rather than folding this into
+// settingsHandler's rate-limit/spend-limit batch update — flipping this one
+// switch shouldn't also silently re-apply whatever rate-limit/spend-limit
+// values happen to be sitting in the form.
+
+const guardrailsHandler = async (c: AppContext) => {
+  const gate = await requireAdmin(c);
+  if (gate) return gate;
+  const env = c.env;
+  const body = (await c.req.json()) as { enabled: boolean };
+
+  const current = await fetchCurrentGatewayConfig(env);
+  const putBody = baseGatewayPutBody(current);
+
+  // Enabling re-applies the existing hazard-category config if there is one
+  // (never overwrites prior tuning), falling back to DEFAULT_GUARDRAILS on a
+  // fresh enable. Disabling must *delete* the key — omitting it is how the
+  // API clears Guardrails, and the spread above would otherwise carry over
+  // an already-enabled config untouched.
+  if (body.enabled) {
+    putBody.guardrails = current.guardrails ?? DEFAULT_GUARDRAILS;
+  } else {
+    delete putBody.guardrails;
+  }
+
+  try {
+    const res = await cfApiFetch(
+      env,
+      `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
+      { method: "PUT", body: JSON.stringify(putBody) },
+    );
+    if (!res.ok) {
+      const errData = await res.json<CfApiResult>();
+      return c.json(
+        { ok: false, error: errData.errors?.[0]?.message || "Failed to update gateway" },
+        502,
+      );
+    }
+    return c.json({ ok: true, guardrailsEnabled: Boolean(putBody.guardrails) });
+  } catch (err: unknown) {
+    return c.json({ ok: false, error: errorMessage(err) }, 500);
+  }
+};
+dualRoute("post", "/guardrails", guardrailsHandler);
 
 // ─── API: Stats ──────────────────────────────────────────────────────────────
 
@@ -554,12 +587,7 @@ const statsHandler = async (c: AppContext) => {
   const env = c.env;
   try {
     // Fetch config for live settings
-    const configRes = await cfApiFetch(
-      env,
-      `/accounts/${env.CLOUDFLARE_ACCOUNT_ID}/ai-gateway/gateways/${env.GATEWAY_ID}`,
-    );
-    const configData = await configRes.json<CfApiResult<GatewayConfig>>();
-    const gw: GatewayConfig = configRes.ok ? (configData.result ?? {}) : {};
+    const gw = await fetchCurrentGatewayConfig(env);
 
     // Fetch spend-limit rules to determine live spend limit state
     let spendLimitOn = false;

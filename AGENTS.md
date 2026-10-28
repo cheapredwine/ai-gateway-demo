@@ -103,7 +103,7 @@ Critical: token MUST have:
 
 `dualRoute()` mounts every handler at both `/demo/api/*` (behind the Access app that protects the custom domain) and `/api/*` (the public `*.workers.dev` URL — `workers_dev = true`, no Access there). Until 2026-10-28 this meant `/api/settings`, `/api/costs` (write), and `/api/stats` were reachable by literally anyone on the internet, with zero auth, able to disable the gateway's own spend/rate limits or read live cost/usage data. Found and fixed in the same session as the `fix/security-hardening` branch evaluation below.
 
-**Gated** (`requireAdmin()`, both `/api/*` and `/demo/api/*`): `/bootstrap`, `/settings`, `/costs` (POST), `/stats`.
+**Gated** (`requireAdmin()`, both `/api/*` and `/demo/api/*`): `/bootstrap`, `/settings`, `/guardrails`, `/costs` (POST), `/stats`.
 **Intentionally open, both mount points, no auth** — this is the documented "service identity" demo: `/chat` (POST), `/costs` (GET — just your own saved per-token rates, not secret).
 
 `requireAdmin()` passes if **either**:
@@ -182,19 +182,18 @@ Body:
 
 ### Gateway Settings API
 
-Rate limiting (and guardrails, see below) are updated via PUT to the gateway. **The live API requires `collect_logs`, `cache_invalidate_on_update`, and `cache_ttl`** — confirmed directly against the real API (2026-10-28): a request without them is rejected with `7001 Required`/`Expected number, received nan`. This isn't documented as a breaking change anywhere; it was just discovered by testing. `settingsHandler` now does a GET of the current gateway config first specifically to source these (and to preserve `dlp`, which would otherwise be silently cleared — PUT replaces the gateway's config, it does not partial-merge fields you don't send):
+Rate limiting is updated via PUT to the gateway (Guardrails has its own endpoint/PUT — see "Guardrails Toggle" below). **The live API requires `collect_logs`, `cache_invalidate_on_update`, and `cache_ttl`** — confirmed directly against the real API (2026-10-28): a request without them is rejected with `7001 Required`/`Expected number, received nan`. This isn't documented as a breaking change anywhere; it was just discovered by testing. The PUT endpoint also **replaces the gateway's config wholesale** — it does not partial-merge fields you omit (confirmed live: an earlier version of this handler silently flipped `authentication` from `true` to `false` by only sending rate-limiting fields, breaking Access-authenticated gateway-mode chat with a bare 401 — see the `authentication` field note on `GatewayConfig`). `settingsHandler` (via the shared `fetchCurrentGatewayConfig`/`baseGatewayPutBody` helpers) does a GET of the current gateway config first and spreads the _entire_ thing into the PUT body, then overrides only what it's intentionally changing:
 
 ```
 GET /client/v4/accounts/{account_id}/ai-gateway/gateways/{gateway_name}   # read current config first
 PUT /client/v4/accounts/{account_id}/ai-gateway/gateways/{gateway_name}
 Body:
   {
-    rate_limiting_limit: 100, rate_limiting_interval: 60, rate_limiting_technique: "fixed",
+    ...<everything from the GET, spread as-is>,
     cache_ttl: <preserved from GET, default 0>,
     collect_logs: <preserved from GET, default true>,
     cache_invalidate_on_update: <preserved from GET, default false>,
-    dlp: <preserved from GET if present — omitting it clears any existing DLP policy>,
-    guardrails: <see below — omitting this key is how you disable Guardrails>
+    rate_limiting_limit: 100, rate_limiting_interval: 60, rate_limiting_technique: "fixed",
   }
 ```
 
@@ -208,11 +207,13 @@ Body:
 
 ### Guardrails Toggle
 
-Simple on/off (no per-category UI) via the same `/api/settings` PUT as rate limiting — see `requireAdmin`/`src/auth.ts` for why this is admin-gated. `settingsHandler` in `src/index.ts`:
+Simple on/off (no per-category UI) via its own dedicated endpoint, `POST /api/guardrails` (`guardrailsHandler` in `src/index.ts`) — deliberately **not** folded into `/api/settings`'s rate-limit/spend-limit batch update, so flipping this one switch doesn't also silently re-apply whatever values happen to be sitting in that form. Takes effect immediately: the UI's checkbox `onchange` calls `toggleGuardrails()` directly, no separate "Apply" click needed. Admin-gated — see `requireAdmin`/`src/auth.ts`.
 
-- **Enabling**: if the gateway already has a `guardrails` config (read via the pre-fetch GET above), re-sends it unchanged — never overwrites a previously fine-tuned hazard-category setup. If there's no existing config (first enable, or re-enabling after a disable), falls back to `DEFAULT_GUARDRAILS`: every category (`S1`-`S13`, `P1`) set to `FLAG` on both prompt and response — visible in logs, not silently blocking, safer for a live demo.
-- **Disabling**: omits the `guardrails` key from the PUT body entirely. Per Cloudflare's docs, that's what clears it server-side — there's no explicit `{enabled: false}` shape. This means a disable **discards** any hazard-category tuning; re-enabling later starts from `DEFAULT_GUARDRAILS`, not whatever was there before.
-- `GET /api/stats` (`statsHandler`) exposes the gateway's actual current state as `guardrailsEnabled: boolean` (`isGuardrailsOn()` — true if `guardrails.prompt` or `guardrails.response` has any keys), and the UI's `loadStats()` syncs the checkbox to match on every load.
+`guardrailsHandler` shares `fetchCurrentGatewayConfig(env)` and `baseGatewayPutBody(current)` with `settingsHandler` and `statsHandler` (GET current config, then spread it into the PUT body — same full-config-spread pattern described in Gateway Settings above, for the same reason: the PUT endpoint replaces the whole resource):
+
+- **Enabling**: if the gateway already has a `guardrails` config (from the pre-fetch GET), re-sends it unchanged — never overwrites a previously fine-tuned hazard-category setup. If there's no existing config (first enable, or re-enabling after a disable), falls back to `DEFAULT_GUARDRAILS`: every category (`S1`-`S13`, `P1`) set to `FLAG` on both prompt and response — visible in logs, not silently blocking, safer for a live demo.
+- **Disabling**: explicitly `delete`s the `guardrails` key from the PUT body (the spread alone would otherwise carry over an already-enabled config). Per Cloudflare's docs, omitting the key is what clears it server-side — there's no explicit `{enabled: false}` shape. This means a disable **discards** any hazard-category tuning; re-enabling later starts from `DEFAULT_GUARDRAILS`, not whatever was there before.
+- `GET /api/stats` (`statsHandler`) exposes the gateway's actual current state as `guardrailsEnabled: boolean` (`isGuardrailsOn()` — true if `guardrails.prompt` or `guardrails.response` has any keys). The UI's `loadStats()` syncs both the checkbox and a top-of-page `#guardrailsBadge` (next to the gateway name, not buried in the Stats panel) to match on every load, and `toggleGuardrails()` also calls `loadStats()` after a successful toggle to refresh both immediately.
 
 **Why this exists:** confirmed live that Guardrails — not model choice — is the dominant latency factor in this demo. Guardrails runs Llama Guard 3 8B as separate inference calls to evaluate the prompt and (separately) the response, on top of whatever chat model is selected. Measured directly against `ai-cost-demo`: a short request went from **~700ms with Guardrails off to 6-15+ seconds with it on** (8-20x), and that gap held across every model tested (1B through 8B) — Cloudflare's own docs estimate "~500ms per evaluation," and there are at least two evaluations per request (prompt + response), more for longer content that gets chunked. If a future report says the demo "is still slow" after already picking a small model, check Guardrails before anything else.
 

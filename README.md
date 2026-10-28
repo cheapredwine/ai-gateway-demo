@@ -4,17 +4,16 @@
 > NO WARRANTIES, EXPRESS OR IMPLIED. Effectively untested demo code — read everything
 > and dry-run before you run. You assume all risk. See [DISCLAIMER.md](./DISCLAIMER.md).
 
-
 A complete Cloudflare AI Gateway demo with a web client that generates traffic through the gateway using **Cloudflare Workers AI**. Supports **Custom Costs**, **Spend Limits**, **Rate Limiting**, **Caching**, **Custom Metadata**, and **Identity-Aware Gateway**.
 
 ---
 
 ## Demo URLs
 
-| URL | Mode | Identity | Access |
-|---|---|---|---|
-| `https://ai-gw.jsherron.com/demo` | Gateway (human) | `cf.user_id` — shows in dashboard | Browser login (OTP/IdP) |
-| `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` | Worker proxy (service) | `cf.common_name` — logs API only | None (Worker holds service token) |
+| URL                                                                | Mode                   | Identity                          | Access                            |
+| ------------------------------------------------------------------ | ---------------------- | --------------------------------- | --------------------------------- |
+| `https://ai-gw.jsherron.com/demo`                                  | Gateway (human)        | `cf.user_id` — shows in dashboard | Browser login (OTP/IdP)           |
+| `https://ai-gateway-demo-worker.jsherron-test-account.workers.dev` | Worker proxy (service) | `cf.common_name` — logs API only  | None (Worker holds service token) |
 
 See [`demo-script.md`](./demo-script.md) for a full walkthrough of both modes plus all gateway features.
 
@@ -58,15 +57,16 @@ Two demo modes, one Worker:
 - **AI Gateway** observes traffic, applies custom costs, caching, rate limits, and spend limits on Workers AI inference.
 
 > **Two gateway references:**
+>
 > - `GATEWAY_NAME` = custom domain for chat traffic (e.g. `ai-gw.jsherron.com`)
 > - `GATEWAY_ID` = actual gateway ID for management API calls (e.g. `ai-cost-demo`)
 
 ### Identity in Logs
 
-| Auth method | Identity field | Dashboard visibility | User agent |
-|---|---|---|---|
-| Human (Access + IdP) | `cf.user_id` | Shows in dashboard, User Insights, per-user limits | Browser |
-| Service token | `cf.common_name` | Logs API only — does NOT appear in dashboard UI | `cloudflare-worker` |
+| Auth method          | Identity field   | Dashboard visibility                               | User agent          |
+| -------------------- | ---------------- | -------------------------------------------------- | ------------------- |
+| Human (Access + IdP) | `cf.user_id`     | Shows in dashboard, User Insights, per-user limits | Browser             |
+| Service token        | `cf.common_name` | Logs API only — does NOT appear in dashboard UI    | `cloudflare-worker` |
 
 **Service tokens do not show as identities in the AI Gateway dashboard.** The `cf.common_name` field is visible in the logs API response but is not surfaced in the dashboard's User Insights or per-user analytics views. Only human identity (`cf.user_id` from IdP authentication) appears in the dashboard. This is the key value-add of Identity-Aware Gateway with human auth.
 
@@ -98,6 +98,10 @@ cp wrangler.toml.example wrangler.toml
 # - Create KV namespace: npx wrangler kv namespace create SETTINGS
 # - Paste the KV id into wrangler.toml
 
+# Generate Env binding types from your wrangler.toml (gitignored, per-developer —
+# rerun this any time you change wrangler.toml)
+npm run types
+
 # Set secrets
 npx wrangler secret put CLOUDFLARE_API_TOKEN
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
@@ -114,13 +118,13 @@ Visit `https://<your-gateway-domain>/demo` to open the web client (requires Acce
 
 ## Web UI Panels
 
-| Panel | Purpose |
-|---|---|
-| **Traffic Generator** | Send single or burst chat requests to Workers AI through the gateway. Choose from 20+ models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
-| **Custom Costs** | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request. |
-| **Gateway Settings** | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API. |
-| **Gateway Stats** | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status). |
-| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights. |
+| Panel                      | Purpose                                                                                                                                                                                   |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Traffic Generator**      | Send single or burst chat requests to Workers AI through the gateway. Choose from 20+ models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
+| **Custom Costs**           | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request.                                                                              |
+| **Gateway Settings**       | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API.                                  |
+| **Gateway Stats**          | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status).                                                           |
+| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights.                                                                           |
 
 ---
 
@@ -146,6 +150,7 @@ cf-aig-cache-key: my-cache-key    (optional)
 ```
 
 Or bypass cache with:
+
 ```http
 cf-aig-skip-cache: true
 ```
@@ -155,6 +160,7 @@ The response includes `cf-aig-cache-status: HIT` or `MISS`. Identical requests w
 ### Rate Limiting
 
 Configure request-based rate limits on the gateway:
+
 - **Limit**: Max requests per window (e.g. 100)
 - **Interval**: Window in seconds (e.g. 60)
 - **Technique**: Fixed or sliding window
@@ -174,6 +180,7 @@ Gateway-level budget enforcement. When cumulative estimated spend hits the budge
 ### Identity-Aware Gateway
 
 Put a custom domain in front of AI Gateway and protect it with **Cloudflare Access**:
+
 1. Add a [custom domain](https://developers.cloudflare.com/ai-gateway/configuration/custom-domains/) to your gateway
 2. Create an [Access application](https://developers.cloudflare.com/cloudflare-one/policies/access/) for that domain
 3. Create a service token and add a Service Auth policy at #1
@@ -183,6 +190,7 @@ Put a custom domain in front of AI Gateway and protect it with **Cloudflare Acce
 7. Service token requests get `cf.common_name` instead (visible in logs API, not dashboard)
 
 This enables:
+
 - **Per-user spend limits** — each user gets their own budget bucket
 - **Per-user rate limits** — cap requests per authenticated identity
 - **User Insights** — behavioral baselines and anomaly detection per user
@@ -201,19 +209,19 @@ A red **Access Logout** button appears in gateway mode. It fetches `/cdn-cgi/acc
 
 ## API Endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/` | Web UI (Worker proxy mode) |
-| `GET` | `/demo` | Web UI (gateway mode, behind Access) |
-| `GET` | `/demo/logout` | Redirect to Access logout endpoint (fallback, not used by button) |
-| `POST` | `/api/chat` | Proxy chat request to Workers AI via AI Gateway (service token) |
-| `POST` | `/demo/api/chat` | Same, under `/demo` prefix |
-| `GET` | `/api/costs` | Read current custom costs from KV |
-| `GET` | `/demo/api/costs` | Same, under `/demo` prefix |
-| `POST` | `/api/costs` | Save custom costs to KV |
-| `POST` | `/api/settings` | Update gateway rate limits + spend limits |
-| `GET` | `/api/stats` | Fetch gateway stats from Cloudflare API |
-| `GET` | `/api/bootstrap` | Ensure gateway exists (requires `Authorization: Bearer CLOUDFLARE_API_TOKEN`) |
+| Method | Path              | Description                                                                   |
+| ------ | ----------------- | ----------------------------------------------------------------------------- |
+| `GET`  | `/`               | Web UI (Worker proxy mode)                                                    |
+| `GET`  | `/demo`           | Web UI (gateway mode, behind Access)                                          |
+| `GET`  | `/demo/logout`    | Redirect to Access logout endpoint (fallback, not used by button)             |
+| `POST` | `/api/chat`       | Proxy chat request to Workers AI via AI Gateway (service token)               |
+| `POST` | `/demo/api/chat`  | Same, under `/demo` prefix                                                    |
+| `GET`  | `/api/costs`      | Read current custom costs from KV                                             |
+| `GET`  | `/demo/api/costs` | Same, under `/demo` prefix                                                    |
+| `POST` | `/api/costs`      | Save custom costs to KV                                                       |
+| `POST` | `/api/settings`   | Update gateway rate limits + spend limits                                     |
+| `GET`  | `/api/stats`      | Fetch gateway stats from Cloudflare API                                       |
+| `GET`  | `/api/bootstrap`  | Ensure gateway exists (requires `Authorization: Bearer CLOUDFLARE_API_TOKEN`) |
 
 ---
 
@@ -221,13 +229,13 @@ A red **Access Logout** button appears in gateway mode. It fetches `/cdn-cgi/acc
 
 Several scripts generate realistic traffic for dashboard demos and load testing:
 
-| Script | Identity | Method | Use Case |
-|---|---|---|---|
-| `scripts/traffic.sh` | Human (`cf.user_id`) | `cloudflared access curl` | Quick bash-based human identity traffic |
-| `scripts/human-identity-traffic.ts` | Human (`cf.user_id`) | Playwright browser automation | Real browser session with saved auth state |
-| `scripts/multi-agent-traffic.sh` | Service (`cf.common_name`) | Parallel curl with `CF-Access-Client-Id` | Multiple service-token agents concurrently |
-| `scripts/combined-traffic.ts` | Both | TypeScript orchestrator | Simultaneous human + service traffic |
-| `scripts/traffic-snippet.js` | Human (`cf.user_id`) | Browser console | Ad-hoc traffic from the demo page |
+| Script                              | Identity                   | Method                                   | Use Case                                   |
+| ----------------------------------- | -------------------------- | ---------------------------------------- | ------------------------------------------ |
+| `scripts/traffic.sh`                | Human (`cf.user_id`)       | `cloudflared access curl`                | Quick bash-based human identity traffic    |
+| `scripts/human-identity-traffic.ts` | Human (`cf.user_id`)       | Playwright browser automation            | Real browser session with saved auth state |
+| `scripts/multi-agent-traffic.sh`    | Service (`cf.common_name`) | Parallel curl with `CF-Access-Client-Id` | Multiple service-token agents concurrently |
+| `scripts/combined-traffic.ts`       | Both                       | TypeScript orchestrator                  | Simultaneous human + service traffic       |
+| `scripts/traffic-snippet.js`        | Human (`cf.user_id`)       | Browser console                          | Ad-hoc traffic from the demo page          |
 
 All scripts randomize models, prompts, custom costs, cache settings, and metadata to produce realistic log diversity.
 
@@ -235,11 +243,11 @@ All scripts randomize models, prompts, custom costs, cache settings, and metadat
 
 ## Token Permissions
 
-| Permission | Scope | Why |
-|---|---|---|
+| Permission          | Scope   | Why                                                                           |
+| ------------------- | ------- | ----------------------------------------------------------------------------- |
 | `AI Gateway — Edit` | Account | Create gateway, create/delete spend limit rules, update rate limiting config. |
-| `AI Gateway — Read` | Account | Read gateway stats and existing rules. |
-| `Workers AI — Read` | Account | Required for Unified Billing / Workers AI inference. |
+| `AI Gateway — Read` | Account | Read gateway stats and existing rules.                                        |
+| `Workers AI — Read` | Account | Required for Unified Billing / Workers AI inference.                          |
 
 Create token at: https://dash.cloudflare.com/?to=/:account/api-tokens
 
@@ -264,15 +272,15 @@ Worker starts on `http://localhost:8787`.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| `KV namespace not found` | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`. |
-| `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**. |
-| `429 Too Many Requests` from chat | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget. |
-| `Model not found` | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct`). |
-| `Workers AI unauthorized` | Add **Workers AI — Read** permission to your API token. |
-| `WARP doesn't auto-login` | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead. |
-| `Logout then re-login fails` | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically. |
+| Symptom                                | Fix                                                                                                               |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `KV namespace not found`               | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`.                                |
+| `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**.                                        |
+| `429 Too Many Requests` from chat      | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget.         |
+| `Model not found`                      | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct`).                             |
+| `Workers AI unauthorized`              | Add **Workers AI — Read** permission to your API token.                                                           |
+| `WARP doesn't auto-login`              | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead.  |
+| `Logout then re-login fails`           | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically. |
 
 ---
 

@@ -1,0 +1,11 @@
+CLOUDFLARE_API_TOKEN=your_token
+CLOUDFLARE_ACCOUNT_ID=your_account_id
+CF_ACCESS_CLIENT_ID=your_access_service_token_id
+CF_ACCESS_CLIENT_SECRET=your_access_service_token_secret
+
+# Optional: additional service-token pairs for scripts/multi-agent-traffic.sh
+# and scripts/combined-traffic.ts (see demo-script.md Part 8.4/8.5).
+# AGENT_ALPHA_ID=your_agent_service_token_id.access
+# AGENT_ALPHA_SECRET=your_agent_service_token_secret
+# AGENT_BETA_ID=your_agent_service_token_id.access
+# AGENT_BETA_SECRET=your_agent_service_token_secret

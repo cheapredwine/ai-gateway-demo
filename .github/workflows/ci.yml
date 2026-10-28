@@ -15,10 +15,13 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # wrangler.toml is gitignored (per-developer config); the example has
-      # enough structure for `wrangler types` to generate Env bindings for
-      # typecheck — no real account/credentials needed.
+      # wrangler.toml and .dev.vars are gitignored (per-developer config).
+      # `wrangler types` reads both to generate the full Env interface — the
+      # secret-backed vars (CLOUDFLARE_API_TOKEN etc.) only show up in Env if
+      # a .dev.vars with those keys exists. Placeholder values are enough;
+      # no real account/credentials needed for typecheck.
       - run: cp wrangler.toml.example wrangler.toml
+      - run: cp .dev.vars.example .dev.vars
       - run: npm run types
       - run: npm run lint
       - run: npm run format:check

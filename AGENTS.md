@@ -78,8 +78,9 @@ KV namespace:
 1. Copy the template: `cp wrangler.toml.example wrangler.toml`
 2. Edit `wrangler.toml` with your `account_id`, `GATEWAY_NAME`, `GATEWAY_ID`, and KV `id`
 3. Add Worker routes for your gateway custom domain (e.g., `ai-gw.jsherron.com/demo` and `ai-gw.jsherron.com/demo/*`)
-4. Run `npm run types` to generate `Env` binding types from your `wrangler.toml` (writes `worker-configuration.d.ts`, gitignored — rerun after any `wrangler.toml` change)
-5. `wrangler.toml` is gitignored so your personal config never gets committed
+4. Copy the secrets template: `cp .dev.vars.example .dev.vars`, then fill in real values
+5. Run `npm run types` to generate `Env` binding types from `wrangler.toml` + `.dev.vars` (writes `worker-configuration.d.ts`, gitignored — rerun after changing either file; `wrangler types` only includes the secret-backed vars like `CLOUDFLARE_API_TOKEN` in `Env` if `.dev.vars` declares them)
+6. `wrangler.toml` and `.dev.vars` are gitignored so your personal config never gets committed
 
 ## API Token Permissions
 

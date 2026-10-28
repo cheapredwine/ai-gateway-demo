@@ -98,8 +98,14 @@ cp wrangler.toml.example wrangler.toml
 # - Create KV namespace: npx wrangler kv namespace create SETTINGS
 # - Paste the KV id into wrangler.toml
 
-# Generate Env binding types from your wrangler.toml (gitignored, per-developer —
-# rerun this any time you change wrangler.toml)
+# Copy the secrets template too — wrangler types reads .dev.vars to include
+# the secret-backed vars (CLOUDFLARE_API_TOKEN etc.) in the generated Env type
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars with real values (see Local Development below), or leave the
+# placeholders if you're only running `npm run types` / `npm run lint` for now
+
+# Generate Env binding types from your wrangler.toml + .dev.vars (both
+# gitignored, per-developer — rerun this any time either file changes)
 npm run types
 
 # Set secrets
@@ -256,12 +262,10 @@ Create token at: https://dash.cloudflare.com/?to=/:account/api-tokens
 ## Local Development
 
 ```bash
-cat > .dev.vars <<EOF
-CLOUDFLARE_API_TOKEN=your_token
-CLOUDFLARE_ACCOUNT_ID=your_account_id
-CF_ACCESS_CLIENT_ID=your_access_service_token_id
-CF_ACCESS_CLIENT_SECRET=your_access_service_token_secret
-EOF
+# If you haven't already (see Quick Start):
+cp .dev.vars.example .dev.vars
+# Edit .dev.vars with your real token/account/service-token values, then:
+npm run types   # regenerate Env types now that .dev.vars has real keys
 
 npm run dev
 ```

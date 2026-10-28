@@ -36,7 +36,7 @@
 
 ### 1.3 Generate traffic
 
-1. Pick a model (e.g., Llama 3.1 8B Instruct Fast)
+1. Pick a model (e.g., Llama 3.1 8B FP8 — the default)
 2. Type a prompt: "Explain AI Gateway in one sentence"
 3. Click **Send**
 4. The response appears in the chat output

@@ -135,7 +135,7 @@ Headers:
   cf-aig-cache-ttl: {seconds}     (optional)
   cf-aig-metadata: {json}        (optional)
 Body:
-  { model: "workers-ai/@cf/meta/llama-3.1-8b-instruct", messages: [...] }
+  { model: "workers-ai/@cf/meta/llama-3.1-8b-instruct-fp8", messages: [...] }
 ```
 
 - Uses the AI Gateway custom domain directly
@@ -216,7 +216,7 @@ Set secrets via `wrangler secret put` (same as production), then run:
 npm run dev
 ```
 
-If you need local-only overrides without touching Cloudflare secrets, create `.dev.vars` in the project root — `wrangler dev` reads it automatically.
+If you need local-only overrides without touching Cloudflare secrets, copy `.dev.vars.example` → `.dev.vars` and fill in real values — `wrangler dev` reads it automatically. Rerun `npm run types` after, so the generated `Env` type matches (see Setup above).
 
 ## Tech Stack
 
@@ -271,6 +271,9 @@ npm run deploy
 - Identity-Aware Gateway requires a custom domain and Cloudflare Access (not configurable through this Worker)
 - WARP seamless auth requires same-org WARP enrollment; cross-org shows OTP page instead
 - Access logout race condition: immediate re-login after logout can fail; 2s delay in the client-side logout handles this
+- Requires Node.js 22+ (wrangler 4.x's own requirement) — CI runs on Node 22
+- `wrangler.toml`/`wrangler.toml.example` ordering gotcha: `routes` must stay a top-level key, before any `[table]` header (`[observability]`, `[vars]`, `[[kv_namespaces]]`). TOML absorbs unbracketed keys into whichever table header precedes them — putting `[observability]` before `routes` silently drops the custom-domain routes on deploy with no error, only a warning (`Unexpected fields found in observability field: routes`). Hit and fixed this once already; keep `routes` first.
+- Workers AI models get deprecated and removed (HTTP 410) without much notice — if traffic generation suddenly 410s, check the model against `GET /accounts/{id}/ai/models/search` before assuming the Worker/gateway/Access is broken
 
 ## Public Template Notes
 

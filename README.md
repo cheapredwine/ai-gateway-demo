@@ -75,7 +75,7 @@ Two demo modes, one Worker:
 ## Prerequisites
 
 1. A Cloudflare account.
-2. Node.js 18+ installed locally.
+2. Node.js 22+ installed locally (required by `wrangler` 4.x).
 3. A Cloudflare API token with the following permissions:
    - `AI Gateway — Edit`
    - `AI Gateway — Read`
@@ -124,13 +124,13 @@ Visit `https://<your-gateway-domain>/demo` to open the web client (requires Acce
 
 ## Web UI Panels
 
-| Panel                      | Purpose                                                                                                                                                                                   |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Traffic Generator**      | Send single or burst chat requests to Workers AI through the gateway. Choose from 20+ models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
-| **Custom Costs**           | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request.                                                                              |
-| **Gateway Settings**       | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API.                                  |
-| **Gateway Stats**          | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status).                                                           |
-| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights.                                                                           |
+| Panel                      | Purpose                                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Traffic Generator**      | Send single or burst chat requests to Workers AI through the gateway. Choose from 19 pre-populated models or enter a custom `@cf/` model name. Toggle caching, custom costs, and metadata per-request. |
+| **Custom Costs**           | Set `per_token_in` and `per_token_out` values. Injected as the `cf-aig-custom-cost` header on every request.                                                                                           |
+| **Gateway Settings**       | Configure gateway-level **rate limits** (requests per window, fixed/sliding) and **spend limits** (budget + time window + scope) via the Cloudflare API.                                               |
+| **Gateway Stats**          | Pull live request / token / cost stats from the gateway, plus live config snapshot (cache TTL, rate limit, spend limit status).                                                                        |
+| **Identity-Aware Gateway** | Reference card explaining how to put AI Gateway behind Cloudflare Access for per-user limits and User Insights.                                                                                        |
 
 ---
 
@@ -276,15 +276,15 @@ Worker starts on `http://localhost:8787`.
 
 ## Troubleshooting
 
-| Symptom                                | Fix                                                                                                               |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `KV namespace not found`               | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`.                                |
-| `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**.                                        |
-| `429 Too Many Requests` from chat      | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget.         |
-| `Model not found`                      | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct`).                             |
-| `Workers AI unauthorized`              | Add **Workers AI — Read** permission to your API token.                                                           |
-| `WARP doesn't auto-login`              | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead.  |
-| `Logout then re-login fails`           | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically. |
+| Symptom                                | Fix                                                                                                                                                                                              |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `KV namespace not found`               | Run `wrangler kv namespace create SETTINGS` and paste the ID into `wrangler.toml`.                                                                                                               |
+| `Authentication error` on limits/stats | Regenerate API token with **AI Gateway — Edit** and **AI Gateway — Read**.                                                                                                                       |
+| `429 Too Many Requests` from chat      | Expected when a rate limit or spend limit is exceeded. Wait for the window to reset, or raise the budget.                                                                                        |
+| `Model not found`                      | Ensure the model name uses the `@cf/` prefix (e.g. `@cf/meta/llama-3.1-8b-instruct-fp8`) and isn't deprecated — check the [model catalog](https://developers.cloudflare.com/workers-ai/models/). |
+| `Workers AI unauthorized`              | Add **Workers AI — Read** permission to your API token.                                                                                                                                          |
+| `WARP doesn't auto-login`              | WARP must be enrolled in the same Zero Trust org as the Access app. Cross-org enrollment shows OTP page instead.                                                                                 |
+| `Logout then re-login fails`           | Race condition — wait 2 seconds after logout before navigating to `/demo`. The button handles this automatically.                                                                                |
 
 ---
 
@@ -292,22 +292,34 @@ Worker starts on `http://localhost:8787`.
 
 ```
 ai-gateway-demo/
+├── .github/workflows/
+│   └── ci.yml                     # lint (oxlint + tsc) + format:check (oxfmt) + test on push/PR
 ├── src/
-│   ├── index.ts          # Hono Worker (UI + API)
-│   └── index.test.ts     # Vitest tests
+│   ├── index.ts                   # Hono Worker (routing + API handlers)
+│   ├── index.test.ts              # Vitest tests
+│   ├── ui.ts                      # HTML UI template (renderHtml) — all client-side JS/CSS
+│   ├── traffic-utils.test.ts      # Vitest tests for scripts/lib/traffic-utils.ts
+│   └── api/
+│       └── cloudflare.ts          # Cloudflare REST API fetch helper
 ├── scripts/
-│   ├── create-gateway.ts        # CLI: create gateway
-│   ├── setup-limits.ts          # CLI: create spend limit rule
-│   ├── combined-traffic.ts      # Orchestrate service + human traffic
-│   ├── human-identity-traffic.ts # Playwright browser traffic (cf.user_id)
-│   ├── multi-agent-traffic.sh   # Parallel bash agents (cf.common_name)
-│   ├── traffic.sh               # Simple cloudflared curl traffic
-│   └── traffic-snippet.js       # Browser console ad-hoc traffic
-├── wrangler.toml         # Your local config (gitignored!)
-├── wrangler.toml.example # Template for new users
+│   ├── create-gateway.ts          # CLI: create gateway
+│   ├── setup-limits.ts            # CLI: create spend limit rule
+│   ├── combined-traffic.ts        # Orchestrate service + human traffic
+│   ├── human-identity-traffic.ts  # Playwright browser traffic (cf.user_id)
+│   ├── multi-agent-traffic.sh     # Parallel bash agents (cf.common_name)
+│   ├── traffic.sh                 # Simple cloudflared curl traffic
+│   ├── traffic-snippet.js         # Browser console ad-hoc traffic
+│   └── lib/traffic-utils.ts       # Shared model/prompt randomization helpers
+├── wrangler.toml                  # Your local config (gitignored!)
+├── wrangler.toml.example          # Template for new users
+├── .dev.vars                      # Your local secrets (gitignored!)
+├── .dev.vars.example              # Template for new users
+├── worker-configuration.d.ts      # Env types generated by `npm run types` (gitignored)
 ├── tsconfig.json
 ├── package.json
 ├── README.md
-├── demo-script.md      # Full demo walkthrough (both modes + all features)
-└── AGENTS.md             # Agent context for future sessions
+├── demo-script.md                 # Full demo walkthrough (both modes + all features)
+├── AGENTS.md                      # Agent context for future sessions
+├── LICENSE                        # MIT
+└── DISCLAIMER.md                  # Not-official-Cloudflare disclaimer
 ```

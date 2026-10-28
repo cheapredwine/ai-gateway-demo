@@ -572,6 +572,12 @@ export function renderHtml(opts: UiOptions): string {
                 } catch (e2) {}
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
+                // First send of a prompt can never HIT (the cache is
+                // populated by that very response). Say so on MISS, or it
+                // reads as "caching is broken".
+                if (cacheStatus === "MISS" && useCache && !skipCache) {
+                  log("  cache MISS is expected on the first send — resend the exact same prompt to see a HIT", "info");
+                }
               } else {
                 log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
               }
@@ -602,6 +608,8 @@ export function renderHtml(opts: UiOptions): string {
                 log(\`OK \${tokens} tokens | est cost \${cost}\${cacheStatus} | \${data.model || model}\`, "success");
                 // Real guardrails activity, as reported by the gateway logs:
                 // each Llama Guard evaluation is a separate logged sub-request.
+                // Real guardrails activity, as reported by the gateway logs:
+                // each Llama Guard evaluation is a separate logged sub-request.
                 const gw = data.guardrails;
                 if (gw && gw.evaluations > 0) {
                   const stale = !document.getElementById("guardrailsEnabled").checked;
@@ -612,6 +620,12 @@ export function renderHtml(opts: UiOptions): string {
                 }
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
+                // First send of a prompt can never HIT (the cache is
+                // populated by that very response). Say so on MISS, or it
+                // reads as "caching is broken".
+                if (data.cacheStatus === "MISS" && useCache && !skipCache) {
+                  log("  cache MISS is expected on the first send — resend the exact same prompt to see a HIT", "info");
+                }
               } else {
                 log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");
               }
@@ -633,7 +647,7 @@ export function renderHtml(opts: UiOptions): string {
         // demos caching reliably instead of occasionally showing a false
         // MISS,MISS from pure propagation timing.
         if (count === 1 && useCache && !skipCache) {
-          log("Waiting ~1s for the cache write to finish propagating before you can send again...", "info");
+          log("Tip: the first send of a prompt is always a cache MISS — it populates the cache. Send the same prompt again (~1s, button re-enables) to see a HIT.", "info");
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } finally {

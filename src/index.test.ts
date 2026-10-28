@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const originalFetch = globalThis.fetch;
 
+// Mocked at the module level because src/index.ts -> src/auth.ts imports
+// "jose" for Access-JWT verification. Defaults to *rejecting* every call
+// (fail closed) so a test that forgets to configure this mock can't
+// accidentally make isValidAccessRequest() return true and bypass the
+// admin gate it's supposed to be testing.
+const mockJwtVerify = vi.fn().mockRejectedValue(new Error("not mocked — fails closed by default"));
+vi.mock("jose", () => ({
+  jwtVerify: (...args: unknown[]) => mockJwtVerify(...args),
+  createRemoteJWKSet: () => "mock-jwks-fn",
+}));
+
 const kvStore = new Map<string, string>();
 const mockKV = {
   get: async (key: string) => kvStore.get(key) ?? null,
@@ -18,6 +29,8 @@ const mockEnv = {
   GATEWAY_ID: "demo-gateway",
   CF_ACCESS_CLIENT_ID: "fake-access-id",
   CF_ACCESS_CLIENT_SECRET: "fake-access-secret",
+  CF_ACCESS_TEAM_DOMAIN: "https://fake-team.cloudflareaccess.com",
+  CF_ACCESS_AUD: "fake-aud-tag",
 };
 
 import app from "./index";
@@ -46,6 +59,7 @@ describe("AI Gateway Demo", () => {
   beforeEach(() => {
     kvStore.clear();
     globalThis.fetch = originalFetch;
+    mockJwtVerify.mockReset().mockRejectedValue(new Error("not mocked — fails closed by default"));
   });
 
   // ─── HTML UI ─────────────────────────────────────────────────────────────
@@ -163,7 +177,7 @@ describe("AI Gateway Demo", () => {
       const postRes = await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
         }),
       );
@@ -188,7 +202,7 @@ describe("AI Gateway Demo", () => {
       const postRes = await fetchApp(
         new Request("http://localhost/demo/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0.000003, per_token_out: 0.000004 }),
         }),
       );
@@ -204,7 +218,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0.01, per_token_out: 0.05 }),
         }),
       );
@@ -217,7 +231,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0.000001, per_token_out: 0.000002 }),
         }),
       );
@@ -249,7 +263,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: -1, per_token_out: 0.000002 }),
         }),
       );
@@ -260,7 +274,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/demo/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: "free", per_token_out: 0.000002 }),
         }),
       );
@@ -271,7 +285,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0.000001 }),
         }),
       );
@@ -282,7 +296,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/costs", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({ per_token_in: 0, per_token_out: 0 }),
         }),
       );
@@ -648,7 +662,7 @@ describe("AI Gateway Demo", () => {
       await fetchApp(
         new Request("http://localhost/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -751,7 +765,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -765,7 +779,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/demo/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -797,7 +811,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -830,7 +844,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -864,7 +878,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: false, limit: 100, interval: 60, technique: "sliding" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -894,7 +908,7 @@ describe("AI Gateway Demo", () => {
       const res = await fetchApp(
         new Request("http://localhost/demo/api/settings", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
           body: JSON.stringify({
             rateLimit: { enabled: true, limit: 100, interval: 60, technique: "fixed" },
             spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
@@ -911,12 +925,20 @@ describe("AI Gateway Demo", () => {
 
   describe("Stats", () => {
     it("GET /api/stats returns error without valid API token", async () => {
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect([200, 500]).toContain(res.status);
     });
 
     it("GET /demo/api/stats returns error without valid API token", async () => {
-      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect([200, 500]).toContain(res.status);
     });
 
@@ -970,7 +992,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as {
         ok: boolean;
@@ -1001,7 +1027,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      await fetchApp(new Request("http://localhost/api/stats"));
+      await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
 
       const parsed = JSON.parse(graphqlBody);
       expect(parsed.query).toContain("tokensIn");
@@ -1025,7 +1055,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as {
         ok: boolean;
@@ -1064,7 +1098,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       const data = (await res.json()) as { cacheTTL: number; rlLimit: number; rlInterval: number };
       expect(data.cacheTTL).toBe(300);
       expect(data.rlLimit).toBe(100);
@@ -1089,7 +1127,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       const data = (await res.json()) as { ok: boolean; spendLimit: string };
       expect(data.spendLimit).toBe("On");
     });
@@ -1112,7 +1154,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       const data = (await res.json()) as { ok: boolean; spendLimit: string };
       expect(data.spendLimit).toBe("Off");
     });
@@ -1135,7 +1181,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       const data = (await res.json()) as { ok: boolean; rateLimited?: unknown };
       expect(data.ok).toBe(true);
       expect(data).not.toHaveProperty("rateLimited");
@@ -1143,7 +1193,11 @@ describe("AI Gateway Demo", () => {
 
     it("GET /api/stats returns 500 when upstream fetch rejects", async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
-      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(500);
       const data = (await res.json()) as { ok: boolean; error: string };
       expect(data.ok).toBe(false);
@@ -1152,7 +1206,11 @@ describe("AI Gateway Demo", () => {
 
     it("GET /demo/api/stats returns 500 when upstream fetch rejects", async () => {
       globalThis.fetch = vi.fn().mockRejectedValue(new Error("upstream down"));
-      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(500);
     });
 
@@ -1185,7 +1243,11 @@ describe("AI Gateway Demo", () => {
         return Promise.resolve(mockRes({}));
       });
 
-      const res = await fetchApp(new Request("http://localhost/demo/api/stats"));
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/stats", {
+          headers: { Authorization: "Bearer fake-token" },
+        }),
+      );
       expect(res.status).toBe(200);
       const data = (await res.json()) as {
         ok: boolean;
@@ -1286,6 +1348,292 @@ describe("AI Gateway Demo", () => {
     it("GET /demo/api/debug-access returns 404", async () => {
       const res = await fetchApp(new Request("http://localhost/demo/api/debug-access"));
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ─── Admin gate (requireAdmin) ─────────────────────────────────────────────
+  // These endpoints were previously reachable with zero auth on the public
+  // *.workers.dev URL — see AGENTS.md Known Limitations. The 401-without-auth
+  // cases for /bootstrap already existed above; these cover the three routes
+  // that were newly gated (settings, costs write, stats), plus the Access-JWT
+  // path and the routes that must stay open by design.
+
+  describe("Admin gate (requireAdmin)", () => {
+    const settingsBody = JSON.stringify({
+      rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+      spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+    });
+
+    it("POST /api/settings returns 401 with no auth at all", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: settingsBody,
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("POST /api/costs returns 401 with no auth at all", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/costs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ per_token_in: 0.001, per_token_out: 0.002 }),
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("GET /api/stats returns 401 with no auth at all", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/stats"));
+      expect(res.status).toBe(401);
+    });
+
+    it("hitting /demo/api/stats on the unprotected host with a bogus Access JWT still returns 401", async () => {
+      // Regression test for the actual bug: path alone ("/demo/...") must
+      // never be treated as proof of Access. A garbage JWT header must fail
+      // cryptographic verification, not be trusted because of the path.
+      const res = await fetchApp(
+        new Request("http://localhost/demo/api/stats", {
+          headers: { "Cf-Access-Jwt-Assertion": "not-a-real-jwt" },
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("a verified Access JWT grants access without the admin bearer token", async () => {
+      mockJwtVerify.mockResolvedValue({ payload: { email: "jason@sherron.com" } });
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+
+      const res = await fetchApp(
+        new Request("http://localhost/api/stats", {
+          headers: { "Cf-Access-Jwt-Assertion": "a.valid.jwt" },
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("an invalid Access JWT (failed verification) is rejected even though the header is present", async () => {
+      mockJwtVerify.mockRejectedValue(new Error("signature verification failed"));
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Cf-Access-Jwt-Assertion": "a.forged.jwt",
+          },
+          body: settingsBody,
+        }),
+      );
+      expect(res.status).toBe(401);
+    });
+
+    it("the admin bearer token still works even when no Access JWT is present", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: settingsBody,
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+
+    it("GET /api/costs (reading your own saved costs) stays open by design — no auth required", async () => {
+      const res = await fetchApp(new Request("http://localhost/api/costs"));
+      expect(res.status).toBe(200);
+    });
+
+    it("POST /api/chat (the service-identity demo traffic) stays open by design — no auth required", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+          choices: [{ message: { content: "hi" } }],
+        }),
+      );
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "hi" }),
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // ─── Chat input validation ─────────────────────────────────────────────────
+
+  describe("Chat input validation", () => {
+    it("rejects a missing model", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: "hi" }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects an empty prompt", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "@cf/meta/llama-3.1-8b-instruct-fp8", prompt: "" }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a prompt over the length cap", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "a".repeat(4001),
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a cache key containing control characters (CR/LF)", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "hi",
+            cache: { ttl: 60, key: "evil\r\nX-Injected: true" },
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a cache key over the length cap", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "hi",
+            cache: { ttl: 60, key: "k".repeat(513) },
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects a metadata string value over the length cap", async () => {
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "hi",
+            metadata: { note: "x".repeat(201) },
+          }),
+        }),
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it("accepts a well-formed request with cache and metadata at the limits", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(
+        mockRes({
+          model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+          choices: [{ message: { content: "hi" } }],
+        }),
+      );
+      const res = await fetchApp(
+        new Request("http://localhost/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "@cf/meta/llama-3.1-8b-instruct-fp8",
+            prompt: "a".repeat(4000),
+            cache: { ttl: 60, key: "k".repeat(512) },
+            metadata: { note: "x".repeat(200) },
+          }),
+        }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  // ─── CSRF protection ────────────────────────────────────────────────────────
+
+  describe("CSRF protection", () => {
+    it("blocks a form-encoded cross-site POST to an admin endpoint", async () => {
+      // Hono's csrf() middleware only inspects form-like content types (the
+      // ones a browser can submit cross-site without a CORS preflight) — a
+      // mismatched Origin with one of those content types is the forgery
+      // pattern it exists to catch.
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: "Bearer fake-token",
+            Origin: "https://evil.example.com",
+          },
+          body: "rateLimit=1",
+        }),
+      );
+      expect(res.status).toBe(403);
+    });
+
+    it("does not block a same-origin form-encoded POST", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+            Authorization: "Bearer fake-token",
+            Origin: "http://localhost",
+          },
+          body: "rateLimit=1",
+        }),
+      );
+      // Rejected further downstream for not being valid JSON, not by CSRF.
+      expect(res.status).not.toBe(403);
+    });
+
+    it("does not block normal JSON POSTs with no Origin header (scripts/curl)", async () => {
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(mockRes({ result: { id: "demo-gateway" }, success: true }));
+      const res = await fetchApp(
+        new Request("http://localhost/api/settings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer fake-token" },
+          body: JSON.stringify({
+            rateLimit: { enabled: false, limit: 100, interval: 60, technique: "fixed" },
+            spendLimit: { enabled: false, budget: 1, window: "1d", scope: "global" },
+          }),
+        }),
+      );
+      expect(res.status).toBe(200);
     });
   });
 });

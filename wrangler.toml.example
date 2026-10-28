@@ -16,6 +16,11 @@ compatibility_date = "2026-10-27"
 [vars]
 GATEWAY_NAME = "your-custom-domain.com"
 GATEWAY_ID = "demo-gateway"
+# Non-secret — used to verify the Cf-Access-Jwt-Assertion header on admin
+# endpoints (see src/auth.ts). Find your team domain and this app's AUD tag
+# at https://dash.cloudflare.com/?to=/:account/access/apps -> your Access app.
+# CF_ACCESS_TEAM_DOMAIN = "https://your-team-name.cloudflareaccess.com"
+# CF_ACCESS_AUD = "your_access_application_aud_tag"
 
 # KV namespace for storing custom costs and demo settings
 [[kv_namespaces]]

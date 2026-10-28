@@ -16,10 +16,12 @@
     "setup-limits": "tsx scripts/setup-limits.ts"
   },
   "dependencies": {
-    "hono": "^4.4.0"
+    "hono": "^4.13.14",
+    "jose": "^6.2.13"
   },
   "devDependencies": {
-    "@cloudflare/vitest-pool-workers": "^0.21.0",
+    "@cloudflare/vitest-pool-workers": "^0.23.0",
+    "@cloudflare/workers-types": "^5.20261028.1",
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.2.0",
     "oxfmt": "^0.75.0",
@@ -28,6 +30,6 @@
     "tsx": "^4.15.0",
     "typescript": "^5.4.0",
     "vitest": "^4.1.10",
-    "wrangler": "^4.120.1"
+    "wrangler": "^4.154.0"
   }
 }

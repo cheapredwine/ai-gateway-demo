@@ -152,7 +152,11 @@ describe("traffic-utils", () => {
 
     it("ignores agents with missing secret", () => {
       process.env.AGENT_GAMMA_ID = "gamma-id";
-      delete process.env.AGENT_GAMMA_SECRET;
+      // Reflect.deleteProperty avoids TS2790 (`delete` now requires an
+      // optional operand under newer @types/node's ProcessEnv typing)
+      // without widening process.env's type or risking the "undefined"
+      // string assignment pitfall of `process.env.X = undefined`.
+      Reflect.deleteProperty(process.env, "AGENT_GAMMA_SECRET");
       expect(discoverAgents()).toEqual([]);
     });
   });

@@ -1,0 +1,4 @@
+# oxfmt reads .prettierignore by default. Generated code must not be
+# formatted or format-checked — its content churns with every wrangler
+# regen and oxfmt verdicts on it nondeterministically (CI vs local).
+worker-configuration.d.ts

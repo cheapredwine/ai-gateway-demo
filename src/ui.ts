@@ -637,14 +637,23 @@ export function renderHtml(opts: UiOptions): string {
                 } catch (e2) {}
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
-                // Per-send output is result-only: the OK line carries the
-                // MISS/HIT status; a HIT gets its own visible line.
+                // Per-send cache result — ALWAYS emitted when caching is in
+                // play, both outcomes, unmissable: HIT green with ⚡, MISS
+                // neutral with ○, and an explicit warning if the header is
+                // absent so a missing status can never look like "no result
+                // shown".
                 const usedKey = headers["cf-aig-cache-key"];
                 if (useCache && !skipCache && usedKey) {
                   log(\`  cache key: \${usedKey}\`, "info");
                 }
-                if (cacheStatus === "HIT") {
-                  log("  ⚡ cache HIT — served from cache", "success");
+                if (useCache && !skipCache) {
+                  if (cacheStatus === "HIT") {
+                    log("  ⚡ cache HIT — served from cache", "success");
+                  } else if (cacheStatus === "MISS") {
+                    log("  ○ cache MISS — fetched from provider (the response populates the cache)", "info");
+                  } else {
+                    log("  ? cache status unknown — no cf-aig-cache-status header in the response", "warn");
+                  }
                 }
               } else {
                 log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
@@ -688,10 +697,16 @@ export function renderHtml(opts: UiOptions): string {
                 }
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
-                // Per-send output is result-only (education lives in the
-                // one-time toggle message); a HIT gets its own line.
-                if (data.cacheStatus === "HIT") {
-                  log("  ⚡ cache HIT — served from cache", "success");
+                // Per-send cache result — ALWAYS emitted when caching is in
+                // play, both outcomes (same contract as the gateway branch).
+                if (useCache && !skipCache) {
+                  if (data.cacheStatus === "HIT") {
+                    log("  ⚡ cache HIT — served from cache", "success");
+                  } else if (data.cacheStatus === "MISS") {
+                    log("  ○ cache MISS — fetched from provider (the response populates the cache)", "info");
+                  } else {
+                    log("  ? cache status unknown — no cacheStatus field in the response", "warn");
+                  }
                 }
               } else {
                 log(\`ERR \${res.status}: \${data.error || "Unknown"}\`, "error");

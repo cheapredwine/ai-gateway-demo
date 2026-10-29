@@ -94,6 +94,20 @@ describe("AI Gateway Demo", () => {
       expect(text).not.toContain("gatewayRunToken");
     });
 
+    it("emits an explicit per-send cache result for BOTH outcomes in both modes", async () => {
+      // Regression: on MISS the UI emitted nothing beyond the buried OK-line
+      // status, so gateway-mode users (who can never HIT without a run
+      // token) saw "no cache result shown". Contract: with caching enabled,
+      // every successful send logs exactly one result line — HIT (green ⚡),
+      // MISS (neutral ○), or unknown (warn) — in both chat paths.
+      const text = await (await fetchApp(new Request("http://localhost/"))).text();
+      expect(text).toContain("cache HIT — served from cache");
+      expect(text).toContain("cache MISS — fetched from provider");
+      expect(text).toContain("cache status unknown");
+      expect((text.match(/cache HIT — served from cache/g) ?? []).length).toBe(2); // gateway + worker branches
+      expect((text.match(/cache MISS — fetched from provider/g) ?? []).length).toBe(2);
+    });
+
     it("run token: injected on /demo when configured, never on the public page", async () => {
       // Server-side guarantee: serveHtml passes the token ONLY for gateway
       // mode, so a configured token must appear on /demo and must never

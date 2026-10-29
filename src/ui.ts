@@ -498,16 +498,21 @@ export function renderHtml(opts: UiOptions): string {
     function onCacheToggle() {
       const enabled = document.getElementById("useCache").checked;
       document.getElementById("cacheControls").style.display = enabled ? "block" : "none";
-      // One-time heads-up at the moment caching is turned on, not a warning
-      // attached to every send: in gateway mode without a run token,
-      // Access-authenticated browser requests can't share cache entries at
-      // all (the per-request Access JWT is part of the cache key —
-      // AGENTS.md caching gotcha #3), so a "resend to see a HIT" promise
-      // would never come true. Reset the flag when caching is disabled so
-      // re-enabling shows it again.
-      if (enabled && onGateway && !GATEWAY_RUN_TOKEN && !gatewayCacheNoteShown) {
+      // ALL cache education happens here, exactly once per enable (flag
+      // resets when caching is turned off). Per-send output stays
+      // result-only — repeated tips/warnings on every send read as nagging
+      // and bury the actual HIT/MISS signal.
+      if (enabled && !gatewayCacheNoteShown) {
         gatewayCacheNoteShown = true;
-        log("Note: in gateway mode, caching won't HIT without a gateway run token (the per-request Access JWT makes every request's cache key unique). The workers.dev URL caches reliably. To enable gateway-mode caching, the account owner can configure GATEWAY_RUN_TOKEN (see AGENTS.md).", "warn");
+        if (onGateway && !GATEWAY_RUN_TOKEN) {
+          // Verified 2026-10-29 (AGENTS.md caching gotcha #3): the edge
+          // mints a fresh Access JWT per browser request and that
+          // credential is part of the effective cache key — identical
+          // browser requests can never share a cache entry.
+          log("Note: in gateway mode, caching won't HIT without a gateway run token (the per-request Access JWT makes every request's cache key unique). The workers.dev URL caches reliably. To enable gateway-mode caching, the account owner can configure GATEWAY_RUN_TOKEN (see AGENTS.md).", "warn");
+        } else {
+          log("Tip: the first send of a prompt is always a cache MISS — it populates the cache. Send the exact same prompt again to see a HIT.", "info");
+        }
       }
     }
 
@@ -632,17 +637,14 @@ export function renderHtml(opts: UiOptions): string {
                 } catch (e2) {}
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
-                // Show the cache key actually used, so a stale UI version or
-                // a wrong key is self-evident from the output.
+                // Per-send output is result-only: the OK line carries the
+                // MISS/HIT status; a HIT gets its own visible line.
                 const usedKey = headers["cf-aig-cache-key"];
                 if (useCache && !skipCache && usedKey) {
                   log(\`  cache key: \${usedKey}\`, "info");
                 }
-                // Make a HIT unmissable — it's the moment the caching demo
-                // actually lands, and burying it in the OK line read as
-                // "caching never shows a result".
                 if (cacheStatus === "HIT") {
-                  log(\`  ⚡ cache HIT — served from cache\${GATEWAY_RUN_TOKEN ? "" : " (rare in gateway mode without a run token)"}\`, "success");
+                  log("  ⚡ cache HIT — served from cache", "success");
                 }
               } else {
                 log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
@@ -686,13 +688,8 @@ export function renderHtml(opts: UiOptions): string {
                 }
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
-                // First send of a prompt can never HIT (the cache is
-                // populated by that very response). Say so on MISS, or it
-                // reads as "caching is broken".
-                if (data.cacheStatus === "MISS" && useCache && !skipCache && i === 0) {
-                  log("  cache MISS is expected on the first send — resend the exact same prompt to see a HIT", "info");
-                }
-                // Make a HIT unmissable, same as the gateway-mode branch.
+                // Per-send output is result-only (education lives in the
+                // one-time toggle message); a HIT gets its own line.
                 if (data.cacheStatus === "HIT") {
                   log("  ⚡ cache HIT — served from cache", "success");
                 }
@@ -715,8 +712,6 @@ export function renderHtml(opts: UiOptions): string {
         if (count > 1 && useCache && !skipCache) {
           log("Burst sends all requests at once, so identical ones always MISS — a single Send of the same prompt now will HIT.", "warn");
         }
-        // The gateway-mode correction lives in the one-time toggle note
-        // (gatewayCacheNoteShown); no per-burst repetition.
 
         // AI Gateway's cache write isn't synchronous with the response —
         // measured empirically: immediate back-to-back identical requests
@@ -727,14 +722,9 @@ export function renderHtml(opts: UiOptions): string {
         // demos caching reliably instead of occasionally showing a false
         // MISS,MISS from pure propagation timing.
         if (count === 1 && useCache && !skipCache) {
-          // Only promise a HIT where one can actually come: gateway mode
-          // without a run token can't HIT (per-request Access JWT is part
-          // of the cache key — AGENTS.md gotcha #3). The toggle already
-          // showed the one-time explanation there.
-          const hitPromise = !(onGateway && !GATEWAY_RUN_TOKEN);
-          log(hitPromise
-            ? "Tip: the first send of a prompt is always a cache MISS — it populates the cache. Send the same prompt again (~1s, button re-enables) to see a HIT."
-            : "Tip: the first send is always a cache MISS (it populates the cache). Note: gateway-mode requests won't HIT without a gateway run token — see the note above.", "info");
+          // The 1s hold stays (it clears the cache-write propagation
+          // window); the education text moved to the one-time toggle
+          // message — repeating a tip after every send buried the result.
           await new Promise((resolve) => setTimeout(resolve, 1000));
         }
       } finally {

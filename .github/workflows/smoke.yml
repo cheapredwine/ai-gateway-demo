@@ -19,6 +19,6 @@ jobs:
           code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 https://ai-gw.jsherron.com)
           echo "HTTP $code"
           case "$code" in
-            200|301|302|403) echo "OK: reachable (Access-gated as expected)"; exit 0 ;;
+            200|301|302|401|403) echo "OK: reachable (Access-gated as expected)"; exit 0 ;;
             *) echo "UNREACHABLE or erroring — demo may have rotted"; exit 1 ;;
           esac

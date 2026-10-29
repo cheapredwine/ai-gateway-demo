@@ -348,3 +348,7 @@ npm run deploy
 - Copy `wrangler.toml.example` → `wrangler.toml` and fill in your values
 - `wrangler.toml` is gitignored so your personal config never gets committed
 - Default gateway name is `demo-gateway` (change via `GATEWAY_ID` var)
+
+## Verification
+
+`npm run verify` is the done-check for any code change in this repo (agents: run it before claiming done; task is complete when it exits 0).

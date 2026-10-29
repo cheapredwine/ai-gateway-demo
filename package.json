@@ -13,7 +13,8 @@
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
     "create-gateway": "tsx scripts/create-gateway.ts",
-    "setup-limits": "tsx scripts/setup-limits.ts"
+    "setup-limits": "tsx scripts/setup-limits.ts",
+    "verify": "npm run lint && npm run test"
   },
   "dependencies": {
     "hono": "^4.13.14",

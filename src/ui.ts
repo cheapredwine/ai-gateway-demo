@@ -327,6 +327,7 @@ export function renderHtml(opts: UiOptions): string {
         <div id="guardrailsMessage"></div>
 
         <button onclick="saveGatewaySettings()">Apply Rate &amp; Spend Limits</button>
+        <p class="muted" style="font-size:0.75rem;margin-top:0.25rem">Fields are pre-filled with the gateway's current settings on load — Apply sends exactly what you see.</p>
         <div id="limitMessage"></div>
       </div>
 
@@ -782,6 +783,24 @@ export function renderHtml(opts: UiOptions): string {
           document.getElementById("statCacheTTL").textContent = data.cacheTTL ?? "-";
           document.getElementById("statRLLimit").textContent = data.rlLimit ?? "-";
           document.getElementById("statSpendLimit").textContent = data.spendLimit ?? "-";
+          // Pre-populate the Gateway Settings form from the live gateway on
+          // every load. Without this, a fresh page's Apply button sent the
+          // form's hardcoded defaults ("Enable rate limiting" unchecked =>
+          // rate_limiting_limit: 0) and silently disabled rate limiting —
+          // confirmed live when Apply was clicked with the defaults showing.
+          // Syncing here means Apply always starts from the gateway's actual
+          // state instead of blank-form assumptions.
+          document.getElementById("rlEnabled").checked = Number(data.rlLimit) > 0;
+          if (data.rlLimit !== undefined && Number(data.rlLimit) > 0) {
+            document.getElementById("rlLimit").value = data.rlLimit;
+          }
+          if (data.rlInterval !== undefined && Number(data.rlInterval) > 0) {
+            document.getElementById("rlInterval").value = data.rlInterval;
+          }
+          if (data.rlTechnique) {
+            document.getElementById("rlTechnique").value = data.rlTechnique;
+          }
+          document.getElementById("limitEnabled").checked = data.spendLimit === "On";
           setGuardrailsDisplay(Boolean(data.guardrailsEnabled));
           document.getElementById("statsDetail").textContent = data.note || "";
         } else {

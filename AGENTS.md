@@ -182,6 +182,8 @@ Body:
 
 ### Gateway Settings API
 
+**The UI pre-fills the Gateway Settings form from `/api/stats` on every load** (checkboxes, limit, interval, technique, spend-limit toggle) — verified necessary the hard way (2026-10-28): before this, a fresh page's form showed hardcoded defaults with "Enable rate limiting" **unchecked**, and one click of Apply silently sent `rate_limiting_limit: 0`, disabling rate limiting (user: "I didn't change rate limiting afaik" — they hadn't, the form had). Apply always starts from the gateway's actual state now.
+
 Rate limiting is updated via PUT to the gateway (Guardrails has its own endpoint/PUT — see "Guardrails Toggle" below). **The live API requires `collect_logs`, `cache_invalidate_on_update`, and `cache_ttl`** — confirmed directly against the real API (2026-10-28): a request without them is rejected with `7001 Required`/`Expected number, received nan`. This isn't documented as a breaking change anywhere; it was just discovered by testing. The PUT endpoint also **replaces the gateway's config wholesale** — it does not partial-merge fields you omit (confirmed live: an earlier version of this handler silently flipped `authentication` from `true` to `false` by only sending rate-limiting fields, breaking Access-authenticated gateway-mode chat with a bare 401 — see the `authentication` field note on `GatewayConfig`). `settingsHandler` (via the shared `fetchCurrentGatewayConfig`/`baseGatewayPutBody` helpers) does a GET of the current gateway config first and spreads the _entire_ thing into the PUT body, then overrides only what it's intentionally changing:
 
 ```

@@ -1471,7 +1471,7 @@ describe("AI Gateway Demo", () => {
       expect(data.cost).toBe("-");
     });
 
-    it("returns gateway config fields (cacheTTL, rlLimit, rlInterval)", async () => {
+    it("returns gateway config fields (cacheTTL, rlLimit, rlInterval, rlTechnique) for form pre-fill", async () => {
       globalThis.fetch = vi.fn().mockImplementation((url: string) => {
         if (url.includes("/ai-gateway/gateways/")) {
           return Promise.resolve(
@@ -1481,6 +1481,7 @@ describe("AI Gateway Demo", () => {
                 cache_ttl: 300,
                 rate_limiting_limit: 100,
                 rate_limiting_interval: 60,
+                rate_limiting_technique: "sliding",
               },
               success: true,
             }),
@@ -1501,10 +1502,20 @@ describe("AI Gateway Demo", () => {
           headers: { Authorization: "Bearer fake-token" },
         }),
       );
-      const data = (await res.json()) as { cacheTTL: number; rlLimit: number; rlInterval: number };
+      const data = (await res.json()) as {
+        cacheTTL: number;
+        rlLimit: number;
+        rlInterval: number;
+        rlTechnique: string;
+      };
       expect(data.cacheTTL).toBe(300);
       expect(data.rlLimit).toBe(100);
       expect(data.rlInterval).toBe(60);
+      // Regression: the Gateway Settings form is pre-filled from /api/stats.
+      // When this field was missing, a fresh page's Apply button sent the
+      // form's hardcoded defaults and silently disabled rate limiting
+      // (rate_limiting_limit: 0) — confirmed live 2026-10-28.
+      expect(data.rlTechnique).toBe("sliding");
     });
 
     it("spendLimit is On when spend-limit rules exist (from rules API, not config)", async () => {

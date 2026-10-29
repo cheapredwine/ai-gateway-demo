@@ -122,6 +122,7 @@ type GatewayConfig = {
   cache_ttl?: number;
   rate_limiting_limit?: number;
   rate_limiting_interval?: number;
+  rate_limiting_technique?: string;
   collect_logs?: boolean;
   cache_invalidate_on_update?: boolean;
   // "Authenticated Gateway" — requires a cf-aig-authorization header on every
@@ -754,6 +755,7 @@ const statsHandler = async (c: AppContext) => {
       cacheTTL: gw.cache_ttl ?? 0,
       rlLimit: gw.rate_limiting_limit ?? 0,
       rlInterval: gw.rate_limiting_interval ?? 0,
+      rlTechnique: gw.rate_limiting_technique ?? "fixed",
       spendLimit: spendLimitOn ? "On" : "Off",
       guardrailsEnabled: isGuardrailsOn(gw.guardrails),
       note: "Stats from Cloudflare AI Gateway Analytics.",

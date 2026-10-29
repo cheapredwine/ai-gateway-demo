@@ -74,6 +74,19 @@ describe("AI Gateway Demo", () => {
       expect(text).toContain("demo-gateway");
     });
 
+    it("gateway-mode chat path always sends cf-aig-cache-key (autoCacheKey fallback)", async () => {
+      // Regression: gateway-mode (human-identity) requests never cached with
+      // only cf-aig-cache-ttl — the gateway's default cache key includes the
+      // provider auth credential, which for Access-authenticated browser
+      // requests varies per request. The UI must now always send an explicit
+      // cache key (user-provided or autoCacheKey-derived).
+      const text = await (await fetchApp(new Request("http://localhost/"))).text();
+      expect(text).toContain("autoCacheKey(model, prompt)");
+      expect(text).toContain(
+        'headers["cf-aig-cache-key"] = cacheKey || autoCacheKey(model, prompt)',
+      );
+    });
+
     it("GET /demo returns same HTML", async () => {
       const res = await fetchApp(new Request("http://localhost/demo"));
       expect(res.status).toBe(200);

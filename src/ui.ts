@@ -447,8 +447,21 @@ export function renderHtml(opts: UiOptions): string {
         });
     }
 
-    function show(id, msg, type="success", timeoutMs=5000) {
-      const el = document.getElementById(id);
+    // Deterministic cache key for gateway-mode requests: identical
+    // (model, prompt) pairs share one key so the second send HITs; different
+    // prompts get different keys so they never share a response. djb2 over
+    // the concatenated string — collisions are vanishingly unlikely for
+    // demo-length prompts and only cost a wrong cached answer, not an error.
+    function autoCacheKey(model, prompt) {
+      const s = model + "|" + prompt;
+      let h = 5381;
+      for (let i = 0; i < s.length; i++) {
+        h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+      }
+      return "gw-" + h.toString(36);
+    }
+
+    function show(id, msg, type="success", timeoutMs=5000) {      const el = document.getElementById(id);
       el.innerHTML = "";
       const div = document.createElement("div");
       div.className = "message " + type;
@@ -524,7 +537,20 @@ export function renderHtml(opts: UiOptions): string {
                   headers["cf-aig-skip-cache"] = "true";
                 } else {
                   headers["cf-aig-cache-ttl"] = String(cacheTTL);
-                  if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;
+                  // Gateway-mode requests are Access-authenticated and carry
+                  // no Authorization header, and the gateway's DEFAULT cache
+                  // key includes the provider auth credential — for these
+                  // requests that's the Access JWT context, which varies per
+                  // request. Measured live (2026-10-29): every human-identity
+                  // browser request with only cf-aig-cache-ttl was a MISS,
+                  // forever, while every service-identity request HIT. An
+                  // explicit cf-aig-cache-key overrides the default key
+                  // entirely and restores caching (verified MISS -> HIT from
+                  // the CLI with the same header shape). So always send one:
+                  // the user's key if provided, else a deterministic key
+                  // derived from model+prompt so identical requests share a
+                  // cached response and different prompts don't collide.
+                  headers["cf-aig-cache-key"] = cacheKey || autoCacheKey(model, prompt);
                 }
               }
               if (useMetadata && metaKey) {

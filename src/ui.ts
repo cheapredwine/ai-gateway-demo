@@ -599,10 +599,17 @@ export function renderHtml(opts: UiOptions): string {
                 } catch (e2) {}
                 const content = data.choices?.[0]?.message?.content;
                 if (content) log(\`  > \${content}\`, "info");
+                // Show the cache key actually used, so a stale UI version or
+                // a wrong key is self-evident from the output.
+                const usedKey = headers["cf-aig-cache-key"];
+                if (useCache && !skipCache && usedKey) {
+                  log(\`  cache key: \${usedKey}\`, "info");
+                }
                 // First send of a prompt can never HIT (the cache is
-                // populated by that very response). Say so on MISS, or it
-                // reads as "caching is broken".
-                if (cacheStatus === "MISS" && useCache && !skipCache) {
+                // populated by that very response). Say so on MISS — once,
+                // not once per burst request — or it reads as "caching is
+                // broken".
+                if (cacheStatus === "MISS" && useCache && !skipCache && i === 0) {
                   log("  cache MISS is expected on the first send — resend the exact same prompt to see a HIT", "info");
                 }
               } else {
@@ -664,6 +671,14 @@ export function renderHtml(opts: UiOptions): string {
 
         await Promise.all(Array.from({ length: count }, (_, i) => sendOne(i)));
         log(\`Done — \${count} request\${count === 1 ? "" : "s"} complete.\`, "info");
+
+        // Send Burst fires every request SIMULTANEOUSLY — identical
+        // simultaneous requests always all-MISS by design (no response has
+        // completed yet to populate the cache), which read as "caching is
+        // broken" after a burst.
+        if (count > 1 && useCache && !skipCache) {
+          log("Burst sends all requests at once, so identical ones always MISS — a single Send of the same prompt now will HIT.", "warn");
+        }
 
         // AI Gateway's cache write isn't synchronous with the response —
         // measured empirically: immediate back-to-back identical requests

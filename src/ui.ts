@@ -610,7 +610,14 @@ export function renderHtml(opts: UiOptions): string {
                 // not once per burst request — or it reads as "caching is
                 // broken".
                 if (cacheStatus === "MISS" && useCache && !skipCache && i === 0) {
-                  log("  cache MISS is expected on the first send — resend the exact same prompt to see a HIT", "info");
+                  // Verified 2026-10-29: gateway-mode (Access-authenticated,
+                  // human-identity) requests are never served from the
+                  // gateway cache — stable explicit cache key, same colo,
+                  // 16+ identical resends, zero HITs — while service-identity
+                  // requests with the same header shape HIT reliably. The
+                  // per-request Access JWT appears to defeat caching. Be
+                  // honest instead of promising a HIT that never comes.
+                  log("  Note: Access-authenticated (human identity) requests are not served from the gateway cache — even with an explicit key. For the caching demo, use the workers.dev URL (service identity), which caches reliably.", "warn");
                 }
               } else {
                 log(\`ERR \${res.status}: \${data.error?.message || data.error || "Unknown"}\`, "error");
@@ -678,6 +685,12 @@ export function renderHtml(opts: UiOptions): string {
         // broken" after a burst.
         if (count > 1 && useCache && !skipCache) {
           log("Burst sends all requests at once, so identical ones always MISS — a single Send of the same prompt now will HIT.", "warn");
+        }
+        // In gateway mode, the single-Send HIT promise above is untrue:
+        // Access-authenticated requests never HIT (verified 2026-10-29).
+        // Say so instead of pointing at a HIT that will never come.
+        if (count > 1 && useCache && !skipCache && onGateway) {
+          log("…except in gateway mode: Access-authenticated requests are not served from cache. Use the workers.dev URL for the caching demo.", "warn");
         }
 
         // AI Gateway's cache write isn't synchronous with the response —

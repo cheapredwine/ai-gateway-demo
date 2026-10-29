@@ -64,6 +64,11 @@ function serveHtml(c: AppContext) {
       gatewayName: c.env.GATEWAY_NAME,
       isGateway,
       accessLogoutUrl,
+      // Shared run credential for gateway-mode caching — injected ONLY on
+      // the Access-protected /demo page. GATEWAY_RUN_TOKEN is optional: an
+      // account owner who hasn't minted one just gets the pre-existing
+      // behavior (and an honest MISS hint) instead of a broken feature.
+      gatewayRunToken: isGateway ? (c.env.GATEWAY_RUN_TOKEN ?? "") : "",
     }),
   );
 }

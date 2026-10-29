@@ -87,6 +87,31 @@ describe("AI Gateway Demo", () => {
       );
     });
 
+    it("does not embed GATEWAY_RUN_TOKEN in the public workers.dev page", async () => {
+      // The run credential may only appear on the Access-protected /demo
+      // page; the public workers.dev page must never carry it.
+      const text = await (await fetchApp(new Request("http://localhost/"))).text();
+      expect(text).not.toContain("gatewayRunToken");
+    });
+
+    it("run token: injected on /demo when configured, never on the public page", async () => {
+      // Server-side guarantee: serveHtml passes the token ONLY for gateway
+      // mode, so a configured token must appear on /demo and must never
+      // appear on the public workers.dev page.
+      const envWithToken = { ...mockEnv, GATEWAY_RUN_TOKEN: "tok_test_scope_run_only" };
+      const gw = await (
+        await app.fetch(new Request("http://localhost/demo"), envWithToken as any, createCtx())
+      ).text();
+      expect(gw).toContain("tok_test_scope_run_only");
+      const pub = await (
+        await app.fetch(new Request("http://localhost/"), envWithToken as any, createCtx())
+      ).text();
+      expect(pub).not.toContain("tok_test_scope_run_only");
+      // Unconfigured: /demo renders the empty-string form (feature off).
+      const gwEmpty = await (await fetchApp(new Request("http://localhost/demo"))).text();
+      expect(gwEmpty).toContain('const GATEWAY_RUN_TOKEN = ""');
+    });
+
     it("GET /demo returns same HTML", async () => {
       const res = await fetchApp(new Request("http://localhost/demo"));
       expect(res.status).toBe(200);

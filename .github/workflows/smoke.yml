@@ -1,0 +1,24 @@
+name: deployed-smoke
+
+# The demo breaks by rot (model deprecation, SDK drift, gateway API changes),
+# not by editing — so a scheduled check of the live URL is the piece that
+# matters. Asserts "deployed and reachable": the zone sits behind Cloudflare
+# Access, so an unauthenticated request must receive a redirect/403, not a 5xx.
+
+on:
+  schedule:
+    - cron: "0 15 * * 1" # Mondays 15:00 UTC (08:00 PT)
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check demo is deployed and reachable
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 https://ai-gw.jsherron.com)
+          echo "HTTP $code"
+          case "$code" in
+            200|301|302|403) echo "OK: reachable (Access-gated as expected)"; exit 0 ;;
+            *) echo "UNREACHABLE or erroring — demo may have rotted"; exit 1 ;;
+          esac

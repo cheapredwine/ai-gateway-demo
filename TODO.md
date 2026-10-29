@@ -4,9 +4,8 @@ Current work items. Keep current with changes (see `~/src/AGENTS.md` minimum-fil
 
 ## Open
 
-- [ ] **Browser-test the `GATEWAY_RUN_TOKEN` workaround** — needs a minimal-scope API token (`AI Gateway Run` only) created in the dashboard, set in `.dev.vars` + `wrangler secret put GATEWAY_RUN_TOKEN`, then verify MISS→HIT in the real browser on `ai-gw.jsherron.com/demo`. Mechanism status: `cf-aig-authorization` is accepted but _not_ cache-key material (see AGENTS.md caching gotcha #3) — the shipped workaround is therefore **unproven**; the more promising variant is sending the scoped token as the `Authorization` header (risk: forwarded upstream as provider key; cookie-path only, untestable from CLI).
-- [ ] **File the AIG Jira ticket** — draft ready at `~/src/notes/misc/aig-cache-key-credential-ticket.md` (label `uat-aig-identity`). Evidence: credential-in-cache-key behavior contradicting the "custom key overrides" doc claim; browser per-request Access JWT rotation defeats caching.
-- [ ] **Node 22 → 24** — CI + docs pin Node 22; external baseline (endoflife.date, 2026-10-29) says production projects should run Active/Maintenance LTS (≥24). One-line CI + docs change. User-approved pending.
+- [x] **Gateway-mode browser caching: investigated to conclusion (2026-10-29).** Platform regression since ~mid-Aug 2026 — per-request Access credential defeats the cache key. All client-side remedies tested and closed; `autoCacheKey` and `GATEWAY_RUN_TOKEN` workarounds removed as disproven. Worker mode is the caching demo. -> **File the AIG Jira ticket** (draft: `~/src/notes/misc/aig-cache-key-credential-ticket.md`, label `uat-aig-identity`) — now with before/after log-scan evidence (75 historical browser HITs -> zero today under identical request shape).
+- [ ] **Node 22 -> 24** — CI + docs pin Node 22; external baseline (endoflife.date, 2026-10-29) says production projects should run Active/Maintenance LTS (>=24). One-line CI + docs change. User-approved pending.
 - [ ] **Consider retiring `ci.yml`** — redundant with `verify.yml` (stricter superset); double spend + the earlier nondeterministic-failure confusion. User-approved pending.
 
 ## Done (recent)

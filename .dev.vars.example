@@ -10,13 +10,6 @@ CF_ACCESS_CLIENT_SECRET=your_access_service_token_secret
 # AGENT_BETA_ID=your_agent_service_token_id.access
 # AGENT_BETA_SECRET=your_agent_service_token_secret
 
-# Optional: minimal-scope AI Gateway run credential for gateway-mode caching.
-# Create a custom API token with ONLY the "AI Gateway Run" permission scoped
-# to this account (NOT the admin CLOUDFLARE_API_TOKEN — that gates the
-# Worker's management endpoints and must never be embedded in a page). The
-# token is injected into the Access-protected /demo page only and is shared
-# by everyone who passes Access. When set, gateway-mode browser caching
-# works (stable cf-aig-authorization credential); when empty (the default
-# below), gateway mode shows an honest MISS hint instead. Fill in the value
-# here AND run: wrangler secret put GATEWAY_RUN_TOKEN
-GATEWAY_RUN_TOKEN=
+# (GATEWAY_RUN_TOKEN was removed 2026-10-29: the cf-aig-authorization
+# workaround was proven ineffective for browser caching — see AGENTS.md
+# caching gotcha #3 for the full investigation.)

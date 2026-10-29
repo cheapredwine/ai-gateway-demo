@@ -2,17 +2,10 @@ export type UiOptions = {
   gatewayName: string;
   isGateway: boolean;
   accessLogoutUrl: string;
-  // Shared, minimal-scope AI Gateway run credential, injected ONLY in
-  // gateway mode (the Access-protected page). Stabilizes the gateway's
-  // cache-key credential component for browser requests — see AGENTS.md
-  // caching gotcha #3 for the full mechanism. Empty when not configured,
-  // in which case the UI behaves as before (and the MISS hint explains
-  // why gateway-mode caching can't HIT).
-  gatewayRunToken: string;
 };
 
 export function renderHtml(opts: UiOptions): string {
-  const { gatewayName, isGateway, accessLogoutUrl, gatewayRunToken } = opts;
+  const { gatewayName, isGateway, accessLogoutUrl } = opts;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -406,13 +399,6 @@ export function renderHtml(opts: UiOptions): string {
   <script>
     const onGateway = window.location.pathname.startsWith("/demo");
     const API = onGateway ? "/demo" : "";
-    // Shared minimal-scope run credential, server-injected ONLY on the
-    // Access-protected gateway-mode page. Stabilizes the gateway's
-    // cache-key credential component so browser requests can share cache
-    // entries (see AGENTS.md caching gotcha #3). Never sent in worker mode
-    // (the workers.dev page is public and doesn't need it — the Worker
-    // holds its own credentials server-side).
-    const GATEWAY_RUN_TOKEN = ${isGateway && gatewayRunToken ? JSON.stringify(gatewayRunToken) : '""'};
 
     document.getElementById("identityMode").innerHTML = onGateway
       ? '<span style="color:#4ade80;">Access Identity (cf.user_id)</span>'
@@ -464,20 +450,6 @@ export function renderHtml(opts: UiOptions): string {
         });
     }
 
-    // Deterministic cache key for gateway-mode requests: identical
-    // (model, prompt) pairs share one key so the second send HITs; different
-    // prompts get different keys so they never share a response. djb2 over
-    // the concatenated string — collisions are vanishingly unlikely for
-    // demo-length prompts and only cost a wrong cached answer, not an error.
-    function autoCacheKey(model, prompt) {
-      const s = model + "|" + prompt;
-      let h = 5381;
-      for (let i = 0; i < s.length; i++) {
-        h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
-      }
-      return "gw-" + h.toString(36);
-    }
-
     function show(id, msg, type="success", timeoutMs=5000) {      const el = document.getElementById(id);
       el.innerHTML = "";
       const div = document.createElement("div");
@@ -504,12 +476,18 @@ export function renderHtml(opts: UiOptions): string {
       // and bury the actual HIT/MISS signal.
       if (enabled && !gatewayCacheNoteShown) {
         gatewayCacheNoteShown = true;
-        if (onGateway && !GATEWAY_RUN_TOKEN) {
-          // Verified 2026-10-29 (AGENTS.md caching gotcha #3): the edge
-          // mints a fresh Access JWT per browser request and that
-          // credential is part of the effective cache key — identical
-          // browser requests can never share a cache entry.
-          log("Note: in gateway mode, caching won't HIT without a gateway run token (the per-request Access JWT makes every request's cache key unique). The workers.dev URL caches reliably. To enable gateway-mode caching, the account owner can configure GATEWAY_RUN_TOKEN (see AGENTS.md).", "warn");
+        if (onGateway) {
+          // Verified conclusively 2026-10-29 (AGENTS.md caching gotcha #3):
+          // the gateway keys the cache on the effective Access credential,
+          // and for IdP browser sessions that credential is re-minted per
+          // request (edge-injected) — identical browser requests can never
+          // share a cache entry. Every client-side remedy was tested and
+          // closed: explicit cf-aig-cache-key (ignored for the credential
+          // component), the cf-aig-authorization header (accepted but
+          // ignored, even with a real token), and the Authorization header (treated as provider
+          // credential, forwarded, request fails 401). Caching demos use
+          // worker mode.
+          log("Note: in gateway mode, browser caching can't HIT — the per-request Access credential is part of the gateway's cache key (platform behavior since ~Aug 2026; see AGENTS.md). The workers.dev URL (service identity) caches reliably.", "warn");
         } else {
           log("Tip: the first send of a prompt is always a cache MISS — it populates the cache. Send the exact same prompt again to see a HIT.", "info");
         }
@@ -571,24 +549,14 @@ export function renderHtml(opts: UiOptions): string {
                   headers["cf-aig-skip-cache"] = "true";
                 } else {
                   headers["cf-aig-cache-ttl"] = String(cacheTTL);
-                  // When a shared run credential is configured, send it as
-                  // the gateway credential: the gateway's cache key includes
-                  // the auth credential EVEN when cf-aig-cache-key is set
-                  // (verified by credential-swap test, see AGENTS.md gotcha
-                  // #3), and a browser's per-request Access JWT would
-                  // otherwise make every request's key unique — caching
-                  // could never HIT. The static cf-aig-authorization makes
-                  // the credential component stable. Identity attribution is
-                  // unaffected: cf.user_id still flows from the Access
-                  // session (verified in logs).
-                  if (GATEWAY_RUN_TOKEN) {
-                    headers["cf-aig-authorization"] = "Bearer " + GATEWAY_RUN_TOKEN;
-                  }
-                  // Always send an explicit cache key too: the user's key if
-                  // provided, else a deterministic key derived from
-                  // model+prompt so identical requests share a cached
-                  // response and different prompts don't collide.
-                  headers["cf-aig-cache-key"] = cacheKey || autoCacheKey(model, prompt);
+                  // Explicit cache key when the user provides one. No
+                  // auto-generated key: an explicit cf-aig-cache-key does
+                  // NOT exclude the credential from the gateway's effective
+                  // key, and browser sessions' rotating Access credential
+                  // makes caching impossible in gateway mode anyway (see
+                  // AGENTS.md caching gotcha #3 — the autoCacheKey
+                  // experiment was removed as ineffective).
+                  if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;
                 }
               }
               if (useMetadata && metaKey) {

@@ -74,17 +74,18 @@ describe("AI Gateway Demo", () => {
       expect(text).toContain("demo-gateway");
     });
 
-    it("gateway-mode chat path always sends cf-aig-cache-key (autoCacheKey fallback)", async () => {
-      // Regression: gateway-mode (human-identity) requests never cached with
-      // only cf-aig-cache-ttl — the gateway's default cache key includes the
-      // provider auth credential, which for Access-authenticated browser
-      // requests varies per request. The UI must now always send an explicit
-      // cache key (user-provided or autoCacheKey-derived).
+    it("gateway-mode branch sends the user's cache key but no auto-generated one", async () => {
+      // Regression history: an autoCacheKey was added believing the default
+      // key included the rotating Access credential — disproven by the
+      // full-history log scan (75 browser HITs historically, default-key
+      // path) and by browser console tests (explicit keys MISS forever on
+      // IdP sessions regardless). The autoCacheKey was removed; the UI
+      // forwards only a user-provided cache key again (September behavior).
       const text = await (await fetchApp(new Request("http://localhost/"))).text();
-      expect(text).toContain("autoCacheKey(model, prompt)");
-      expect(text).toContain(
-        'headers["cf-aig-cache-key"] = cacheKey || autoCacheKey(model, prompt)',
-      );
+      expect(text).not.toContain("function autoCacheKey");
+      expect(text).not.toContain("autoCacheKey(model, prompt)");
+      expect(text).toContain('if (cacheKey) headers["cf-aig-cache-key"] = cacheKey;');
+      expect(text).not.toContain('"cf-aig-authorization"');
     });
 
     it("does not embed GATEWAY_RUN_TOKEN in the public workers.dev page", async () => {
@@ -108,22 +109,14 @@ describe("AI Gateway Demo", () => {
       expect((text.match(/cache MISS — fetched from provider/g) ?? []).length).toBe(2);
     });
 
-    it("run token: injected on /demo when configured, never on the public page", async () => {
-      // Server-side guarantee: serveHtml passes the token ONLY for gateway
-      // mode, so a configured token must appear on /demo and must never
-      // appear on the public workers.dev page.
-      const envWithToken = { ...mockEnv, GATEWAY_RUN_TOKEN: "tok_test_scope_run_only" };
-      const gw = await (
-        await app.fetch(new Request("http://localhost/demo"), envWithToken as any, createCtx())
-      ).text();
-      expect(gw).toContain("tok_test_scope_run_only");
-      const pub = await (
-        await app.fetch(new Request("http://localhost/"), envWithToken as any, createCtx())
-      ).text();
-      expect(pub).not.toContain("tok_test_scope_run_only");
-      // Unconfigured: /demo renders the empty-string form (feature off).
-      const gwEmpty = await (await fetchApp(new Request("http://localhost/demo"))).text();
-      expect(gwEmpty).toContain('const GATEWAY_RUN_TOKEN = ""');
+    it("no GATEWAY_RUN_TOKEN mechanism remains (workaround removed as disproven)", async () => {
+      // The cf-aig-authorization workaround was proven ineffective in the
+      // browser (real token in that header: MISS x3 on an IdP session —
+      // the header is ignored for cache keying). The whole mechanism was
+      // removed; nothing may reference it.
+      const text = await (await fetchApp(new Request("http://localhost/"))).text();
+      expect(text).not.toContain("GATEWAY_RUN_TOKEN");
+      expect(text).not.toContain('"cf-aig-authorization"');
     });
 
     it("GET /demo returns same HTML", async () => {

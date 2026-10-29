@@ -16,6 +16,7 @@ CF_ACCESS_CLIENT_SECRET=your_access_service_token_secret
 # Worker's management endpoints and must never be embedded in a page). The
 # token is injected into the Access-protected /demo page only and is shared
 # by everyone who passes Access. When set, gateway-mode browser caching
-# works (stable cf-aig-authorization credential); when empty, gateway mode
-# shows an honest MISS hint instead. Also run: wrangler secret put GATEWAY_RUN_TOKEN
-# GATEWAY_RUN_TOKEN=your_minimal_scope_gateway_run_token
+# works (stable cf-aig-authorization credential); when empty (the default
+# below), gateway mode shows an honest MISS hint instead. Fill in the value
+# here AND run: wrangler secret put GATEWAY_RUN_TOKEN
+GATEWAY_RUN_TOKEN=

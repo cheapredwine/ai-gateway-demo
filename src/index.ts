@@ -68,6 +68,23 @@ function serveHtml(c: AppContext) {
   );
 }
 
+// ─── API: Debug — cookie names (names only, never values) ─────────────────────
+// Temporarily added 2026-10-30 for the AIG caching investigation: the AIG
+// team needs the cookie NAMES the browser sends on same-origin requests
+// (same jar as /compat/chat/completions). Values are never returned or
+// logged. Remove once the investigation concludes.
+
+const cookieNamesHandler = (c: AppContext) => {
+  const cookieHeader = c.req.header("Cookie") ?? "";
+  const names = cookieHeader
+    .split(/;\s*/)
+    .filter((pair) => pair.length > 0)
+    .map((pair) => pair.split("=")[0].trim())
+    .filter((name) => name.length > 0);
+  return c.json({ ok: true, cookieNames: names });
+};
+dualRoute("get", "/cookie-names", cookieNamesHandler);
+
 // ─── API Routes (mounted under both /api and /demo/api) ────────────────────────
 
 type ApiHandler = (c: AppContext) => Promise<Response> | Response;

@@ -95,6 +95,24 @@ describe("AI Gateway Demo", () => {
       expect(text).not.toContain("gatewayRunToken");
     });
 
+    it("cookie-names debug endpoint returns names only, never values", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({}));
+      const res = await fetchApp(
+        new Request("http://localhost/api/cookie-names", {
+          headers: {
+            Cookie:
+              "CF_Authorization=secretvalue1; CF_AppSession=secretvalue2; __cf_bm=secretvalue3",
+          },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as { ok: boolean; cookieNames: string[] };
+      expect(data.ok).toBe(true);
+      expect(data.cookieNames).toEqual(["CF_Authorization", "CF_AppSession", "__cf_bm"]);
+      const text = JSON.stringify(data);
+      expect(text).not.toContain("secretvalue");
+    });
+
     it("emits an explicit per-send cache result for BOTH outcomes in both modes", async () => {
       // Regression: on MISS the UI emitted nothing beyond the buried OK-line
       // status, so gateway-mode users (who can never HIT without a run

@@ -113,6 +113,35 @@ describe("AI Gateway Demo", () => {
       expect(text).not.toContain("secretvalue");
     });
 
+    it("cookie-fingerprints endpoint hashes values (rotation detectable, values never exposed)", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue(mockRes({}));
+      const res = await fetchApp(
+        new Request("http://localhost/api/cookie-fingerprints", {
+          headers: {
+            Cookie:
+              "CF_Authorization=secretvalue1; CF_AppSession=secretvalue2; __cf_bm=secretvalue3",
+          },
+        }),
+      );
+      expect(res.status).toBe(200);
+      const data = (await res.json()) as {
+        ok: boolean;
+        fingerprints: Array<{ name: string; hash: string }>;
+      };
+      expect(data.ok).toBe(true);
+      expect(data.fingerprints.map((f) => f.name)).toEqual([
+        "CF_Authorization",
+        "CF_AppSession",
+        "__cf_bm",
+      ]);
+      // hashes are fixed-width hex, differ across values, and never contain
+      // the raw value or a full digest
+      expect(data.fingerprints.every((f) => /^[0-9a-f]{12}$/.test(f.hash))).toBe(true);
+      expect(data.fingerprints[0].hash).not.toBe(data.fingerprints[1].hash);
+      const text = JSON.stringify(data);
+      expect(text).not.toContain("secretvalue");
+    });
+
     it("emits an explicit per-send cache result for BOTH outcomes in both modes", async () => {
       // Regression: on MISS the UI emitted nothing beyond the buried OK-line
       // status, so gateway-mode users (who can never HIT without a run

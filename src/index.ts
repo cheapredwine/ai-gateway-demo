@@ -85,6 +85,34 @@ const cookieNamesHandler = (c: AppContext) => {
 };
 dualRoute("get", "/cookie-names", cookieNamesHandler);
 
+// Companion endpoint: per-cookie SHA-256 hash (first 12 hex chars) so the
+// browser can detect cookie VALUE ROTATION across requests without any value
+// ever crossing the wire or entering logs. Hashes are of secret cookie
+// values — truncated SHA-256 is not reversible in practice.
+const cookieFingerprintsHandler = async (c: AppContext) => {
+  const cookieHeader = c.req.header("Cookie") ?? "";
+  const pairs = cookieHeader
+    .split(/;\s*/)
+    .filter((pair) => pair.includes("="))
+    .map((pair) => {
+      const eq = pair.indexOf("=");
+      return { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1) };
+    })
+    .filter((p) => p.name.length > 0);
+  const fingerprints = await Promise.all(
+    pairs.map(async (p) => {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(p.value));
+      const hash = [...new Uint8Array(digest)]
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+        .slice(0, 12);
+      return { name: p.name, hash };
+    }),
+  );
+  return c.json({ ok: true, fingerprints });
+};
+dualRoute("get", "/cookie-fingerprints", cookieFingerprintsHandler);
+
 // ─── API Routes (mounted under both /api and /demo/api) ────────────────────────
 
 type ApiHandler = (c: AppContext) => Promise<Response> | Response;

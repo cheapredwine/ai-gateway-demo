@@ -28,7 +28,7 @@
     "oxlint": "^1.90.0",
     "playwright": "^1.62.1",
     "tsx": "^4.15.0",
-    "typescript": "^5.4.0",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "wrangler": "^4.154.0"
   }
